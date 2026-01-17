@@ -519,47 +519,68 @@ export default function BookspaceERP() {
   };
 
   // ========== EXPORTACIÓN ==========
-  const exportarExcel = useCallback((data, nombre, headers, mapFn) => {
+  const descargarArchivo = (blob, nombreArchivo) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', nombreArchivo);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportarArchivo = useCallback((data, nombre, headers, mapFn, formato = 'csv') => {
     if (!data || data.length === 0) {
       notify('No hay datos para exportar', 'error');
       return;
     }
     
     try {
-      const BOM = '\uFEFF';
-      const csvRows = [headers];
-      
-      data.forEach(item => {
-        const row = mapFn(item);
-        csvRows.push(row);
-      });
-      
-      const csvContent = BOM + csvRows.map(row => {
-        if (Array.isArray(row)) {
-          return row.map(cell => {
-            const cellStr = String(cell ?? '');
-            if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-              return `"${cellStr.replace(/"/g, '""')}"`;
-            }
-            return cellStr;
-          }).join(',');
-        }
-        return row;
-      }).join('\r\n');
-      
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
       const fechaExport = new Date().toISOString().split('T')[0];
       const periodoStr = mes > 0 ? `${MESES[mes-1]}-${año}` : año;
-      
-      link.setAttribute('href', url);
-      link.setAttribute('download', `${nombre}_${periodoStr}_${fechaExport}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      let blob;
+      let extension = 'csv';
+
+      if (formato === 'json') {
+        extension = 'json';
+        const payload = {
+          nombre,
+          periodo: periodoStr,
+          exportadoEn: new Date().toISOString(),
+          headers,
+          rows: data.map(item => mapFn(item)),
+        };
+        const jsonContent = JSON.stringify(payload, null, 2);
+        blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      } else {
+        const BOM = '\uFEFF';
+        const csvRows = [headers];
+
+        data.forEach(item => {
+          const row = mapFn(item);
+          csvRows.push(row);
+        });
+
+        const csvContent = BOM + csvRows.map(row => {
+          if (Array.isArray(row)) {
+            return row.map(cell => {
+              const cellStr = String(cell ?? '');
+              if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                return `"${cellStr.replace(/"/g, '""')}"`;
+              }
+              return cellStr;
+            }).join(',');
+          }
+          return row;
+        }).join('\r\n');
+
+        blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      }
+
+      descargarArchivo(blob, `${nombre}_${periodoStr}_${fechaExport}.${extension}`);
       
       notify(`${data.length} registros exportados`);
     } catch (error) {
@@ -567,24 +588,46 @@ export default function BookspaceERP() {
     }
   }, [mes, año]);
 
-  const exportarTransacciones = () => {
-    exportarExcel(txFiltradas, 'Transacciones', ['Fecha', 'Tipo', 'Categoría', 'Concepto', 'Caja', 'Monto'],
-      t => [t.fecha, t.tipo, t.cat || '', t.concepto || '', t.caja, Number(t.monto) || 0]);
+  const exportarTransacciones = (formato = 'csv') => {
+    exportarArchivo(txFiltradas, 'Transacciones', ['Fecha', 'Tipo', 'Categoría', 'Concepto', 'Caja', 'Monto'],
+      t => [t.fecha, t.tipo, t.cat || '', t.concepto || '', t.caja, Number(t.monto) || 0], formato);
   };
 
-  const exportarFacturas = () => {
-    exportarExcel(factFiltradas, 'Facturas', ['Número', 'Fecha', 'Cliente', 'Estado', 'Total'],
-      f => [f.num, f.fecha, f.clienteNom || '', f.estado, f.total || 0]);
+  const exportarFacturas = (formato = 'csv') => {
+    exportarArchivo(factFiltradas, 'Facturas', ['Número', 'Fecha', 'Cliente', 'Estado', 'Total'],
+      f => [f.num, f.fecha, f.clienteNom || '', f.estado, f.total || 0], formato);
   };
 
-  const exportarLeads = () => {
-    exportarExcel(leads, 'Leads', ['Fecha', 'Contacto', 'Venue', 'Email', 'Estado', 'Plan'],
-      l => [l.fecha, l.contacto || '', l.venue || '', l.email || '', l.estado, PLANES.find(p => p.id === l.plan)?.nombre || '']);
+  const exportarLeads = (formato = 'csv') => {
+    exportarArchivo(leads, 'Leads', ['Fecha', 'Contacto', 'Venue', 'Email', 'Estado', 'Plan'],
+      l => [l.fecha, l.contacto || '', l.venue || '', l.email || '', l.estado, PLANES.find(p => p.id === l.plan)?.nombre || ''], formato);
   };
 
-  const exportarClientes = () => {
-    exportarExcel(cli, 'Clientes', ['Nombre', 'RFC', 'Email', 'Teléfono'],
-      c => [c.nombre || '', c.rfc || '', c.email || '', c.tel || '']);
+  const exportarClientes = (formato = 'csv') => {
+    exportarArchivo(cli, 'Clientes', ['Nombre', 'RFC', 'Email', 'Teléfono'],
+      c => [c.nombre || '', c.rfc || '', c.email || '', c.tel || ''], formato);
+  };
+
+  const exportarRespaldo = () => {
+    const fechaExport = new Date().toISOString().split('T')[0];
+    const payload = {
+      exportadoEn: new Date().toISOString(),
+      empresa: cfg.empresa,
+      data: {
+        transacciones: tx,
+        clientes: cli,
+        proveedores: prov,
+        empleados: emp,
+        leads,
+        facturas: fact,
+        juntas,
+        configuracion: cfg,
+      },
+    };
+    const jsonContent = JSON.stringify(payload, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    descargarArchivo(blob, `Respaldo_Bookspace_${fechaExport}.json`);
+    notify('Respaldo completo exportado');
   };
 
   const leadsFiltrados = useMemo(() => {
@@ -625,6 +668,41 @@ export default function BookspaceERP() {
       </div>
     );
   };
+
+  const ExportMenu = ({ onCsv, onJson, label = 'Exportar' }) => (
+    <details className="relative">
+      <summary className="list-none">
+        <span className="px-4 py-2.5 border border-gray-200 text-[#2a1d89] rounded-xl text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2 cursor-pointer">
+          <Download className="w-4 h-4" />{label}
+          <ChevronDown className="w-4 h-4 text-[#b7bac3]" />
+        </span>
+      </summary>
+      <div className="absolute right-0 mt-2 w-44 bg-white border border-gray-100 rounded-xl shadow-lg z-10 p-2">
+        <button
+          type="button"
+          onClick={(event) => {
+            onCsv();
+            const details = event.currentTarget.closest('details');
+            if (details) details.removeAttribute('open');
+          }}
+          className="w-full px-3 py-2 rounded-lg text-left text-sm text-[#2a1d89] hover:bg-[#f8f9fc] flex items-center gap-2"
+        >
+          <FileSpreadsheet className="w-4 h-4 text-[#4f67eb]" />CSV (Excel)
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            onJson();
+            const details = event.currentTarget.closest('details');
+            if (details) details.removeAttribute('open');
+          }}
+          className="w-full px-3 py-2 rounded-lg text-left text-sm text-[#2a1d89] hover:bg-[#f8f9fc] flex items-center gap-2"
+        >
+          <FileText className="w-4 h-4 text-[#4f67eb]" />JSON (API)
+        </button>
+      </div>
+    </details>
+  );
 
   // Stat Card Component
   const StatCard = ({ title, value, subtitle, icon: Icon, color = 'primary', trend }) => {
@@ -953,9 +1031,7 @@ export default function BookspaceERP() {
                   <p className="text-[#b7bac3] text-sm">{leads.length} leads total • {crmStats.proceso} en proceso</p>
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={exportarLeads} className="px-4 py-2.5 border border-gray-200 text-[#2a1d89] rounded-xl text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
-                    <Download className="w-4 h-4" />Exportar
-                  </button>
+                  <ExportMenu onCsv={() => exportarLeads('csv')} onJson={() => exportarLeads('json')} />
                   <button onClick={agregarLead} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
                     <Plus className="w-4 h-4" />Nuevo Lead
                   </button>
@@ -1042,9 +1118,7 @@ export default function BookspaceERP() {
               <div className="flex flex-wrap justify-between items-center gap-4">
                 <p className="text-[#b7bac3] text-sm">{factFiltradas.length} facturas en este periodo</p>
                 <div className="flex gap-3">
-                  <button onClick={exportarFacturas} className="px-4 py-2.5 border border-gray-200 text-[#2a1d89] rounded-xl text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
-                    <Download className="w-4 h-4" />Exportar
-                  </button>
+                  <ExportMenu onCsv={() => exportarFacturas('csv')} onJson={() => exportarFacturas('json')} />
                   <button onClick={agregarFactura} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
                     <Plus className="w-4 h-4" />Nueva Factura
                   </button>
@@ -1093,9 +1167,7 @@ export default function BookspaceERP() {
               <div className="flex flex-wrap justify-between items-center gap-4">
                 <p className="text-[#b7bac3] text-sm">{txFiltradas.length} registros en este periodo</p>
                 <div className="flex gap-3">
-                  <button onClick={exportarTransacciones} className="px-4 py-2.5 border border-gray-200 text-[#2a1d89] rounded-xl text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
-                    <Download className="w-4 h-4" />Exportar Excel
-                  </button>
+                  <ExportMenu onCsv={() => exportarTransacciones('csv')} onJson={() => exportarTransacciones('json')} label="Exportar datos" />
                   <button onClick={agregarTx} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
                     <Plus className="w-4 h-4" />Nuevo Registro
                   </button>
@@ -1197,9 +1269,7 @@ export default function BookspaceERP() {
                   <div className="flex justify-between items-center">
                     <h3 className="font-bold text-lg text-[#2a1d89]">Clientes</h3>
                     <div className="flex gap-3">
-                      <button onClick={exportarClientes} className="px-4 py-2.5 border border-gray-200 text-[#2a1d89] rounded-xl text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
-                        <Download className="w-4 h-4" />Exportar
-                      </button>
+                      <ExportMenu onCsv={() => exportarClientes('csv')} onJson={() => exportarClientes('json')} />
                       <button onClick={agregarCliente} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
                         <Plus className="w-4 h-4" />Nuevo Cliente
                       </button>
@@ -1478,6 +1548,23 @@ export default function BookspaceERP() {
                     <p className="text-2xl font-bold text-[#4f67eb]">{fact.length}</p>
                     <p className="text-sm text-[#b7bac3]">Facturas</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+                <h3 className="font-bold text-[#2a1d89] flex items-center gap-2">
+                  <Download className="w-5 h-5 text-[#4f67eb]" />Exportación y respaldo
+                </h3>
+                <p className="text-sm text-[#b7bac3]">
+                  Exporta un respaldo completo en JSON para procesar todo el historial en otras herramientas.
+                </p>
+                <div>
+                  <button
+                    onClick={exportarRespaldo}
+                    className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20"
+                  >
+                    <Download className="w-4 h-4" />Descargar respaldo JSON
+                  </button>
                 </div>
               </div>
             </div>
