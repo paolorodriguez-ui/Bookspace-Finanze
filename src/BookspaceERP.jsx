@@ -7,6 +7,7 @@ import { AuthModal, SyncIndicator } from './components/auth';
 import { UserMenu } from './components/layout';
 import { ActivityLog, ActivityWidget } from './components/ActivityLog';
 import TasksBoard from './components/tasks/TasksBoard';
+import MeetingsCalendar from './components/calendar/MeetingsCalendar';
 
 // ========== CONSTANTES ==========
 const CAT_ING = ['Comisiones', 'Premium', 'Premium +', 'Silver', 'Gold', 'Capital', 'Préstamo', 'Otro'];
@@ -1106,6 +1107,7 @@ export default function BookspaceERP() {
   const navItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
     { id: 'crm', icon: Target, label: 'CRM' },
+    { id: 'juntas', icon: CalendarDays, label: 'Juntas' },
     { id: 'tasks', icon: ListChecks, label: 'Tareas' },
     { id: 'facturas', icon: FileText, label: 'Facturas' },
     { id: 'registros', icon: Receipt, label: 'Registros' },
@@ -1640,6 +1642,26 @@ export default function BookspaceERP() {
                   <p className="text-[#b7bac3]">No hay leads con estos filtros</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ===== JUNTAS ===== */}
+          {tab === 'juntas' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <p className="text-[#b7bac3] text-sm">{juntas.length} junta{juntas.length !== 1 ? 's' : ''} registrada{juntas.length !== 1 ? 's' : ''}</p>
+                <button
+                  onClick={() => agregarJunta()}
+                  className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20"
+                >
+                  <Plus className="w-4 h-4" />Nueva Junta
+                </button>
+              </div>
+              <MeetingsCalendar
+                meetings={juntas}
+                leads={leads}
+                onSelectMeeting={(meeting) => abrirModal('junta', meeting)}
+              />
             </div>
           )}
 
