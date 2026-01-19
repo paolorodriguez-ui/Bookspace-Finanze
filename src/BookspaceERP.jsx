@@ -37,6 +37,7 @@ const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'O
 const MESES_COMPLETOS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
+const getUpdatedAt = () => Date.now();
 
 // Bookspace Logo Component
 const BookspaceLogo = ({ size = 40 }) => (
@@ -250,7 +251,8 @@ export default function BookspaceERP() {
       if (!leadActual || leadActual.estado === nuevoEstado) {
         return prev;
       }
-      return prev.map(l => l.id === leadId ? { ...l, estado: nuevoEstado } : l);
+      const updatedAt = getUpdatedAt();
+      return prev.map(l => l.id === leadId ? { ...l, estado: nuevoEstado, updatedAt } : l);
     });
     const nombreEstado = EST_LEAD.find(e => e.id === nuevoEstado)?.nombre || nuevoEstado;
     notify(`Lead movido a ${nombreEstado}`);
@@ -263,17 +265,19 @@ export default function BookspaceERP() {
       return;
     }
 
+    const updatedAt = getUpdatedAt();
     const nuevoCliente = {
       id: Date.now(),
       nombre: lead.venue || lead.contacto,
       rfc: '',
       email: lead.email || '',
       tel: lead.tel || '',
-      notas: `Convertido de lead. Plan: ${PLANES.find(p => p.id === lead.plan)?.nombre}`
+      notas: `Convertido de lead. Plan: ${PLANES.find(p => p.id === lead.plan)?.nombre}`,
+      updatedAt
     };
 
     setCli(prev => [nuevoCliente, ...prev]);
-    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, estado: 'cerrado' } : l));
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, estado: 'cerrado', updatedAt } : l));
     notify('¡Convertido a cliente!');
   };
 
@@ -564,31 +568,32 @@ export default function BookspaceERP() {
 
   const guardarYCerrar = () => {
     if (!editData) return;
+    const updated = { ...editData, updatedAt: getUpdatedAt() };
 
     switch (modalType) {
       case 'lead':
-        setLeads(prev => prev.map(l => l.id === editData.id ? editData : l));
-        logLead('update', editData);
+        setLeads(prev => prev.map(l => l.id === editData.id ? updated : l));
+        logLead('update', updated);
         break;
       case 'cli':
-        setCli(prev => prev.map(c => c.id === editData.id ? editData : c));
-        logClient('update', editData);
+        setCli(prev => prev.map(c => c.id === editData.id ? updated : c));
+        logClient('update', updated);
         break;
       case 'prov':
-        setProv(prev => prev.map(p => p.id === editData.id ? editData : p));
-        logProvider('update', editData);
+        setProv(prev => prev.map(p => p.id === editData.id ? updated : p));
+        logProvider('update', updated);
         break;
       case 'emp':
-        setEmp(prev => prev.map(e => e.id === editData.id ? editData : e));
-        logEmployee('update', editData);
+        setEmp(prev => prev.map(e => e.id === editData.id ? updated : e));
+        logEmployee('update', updated);
         break;
       case 'fact':
-        setFact(prev => prev.map(f => f.id === editData.id ? editData : f));
-        logInvoice('update', editData);
+        setFact(prev => prev.map(f => f.id === editData.id ? updated : f));
+        logInvoice('update', updated);
         break;
       case 'junta':
-        setJuntas(prev => prev.map(j => j.id === editData.id ? editData : j));
-        logMeeting('update', editData);
+        setJuntas(prev => prev.map(j => j.id === editData.id ? updated : j));
+        logMeeting('update', updated);
         break;
     }
     cerrarModal();
@@ -648,7 +653,8 @@ export default function BookspaceERP() {
       concepto: '',
       notas: '',
       caja: 'Efectivo',
-      monto: ''
+      monto: '',
+      updatedAt: getUpdatedAt()
     };
     setTx(prev => [nueva, ...prev]);
     logTransaction('create', nueva);
@@ -658,7 +664,7 @@ export default function BookspaceERP() {
   const actualizarTx = (id, campo, valor) => {
     setTx(prev => prev.map(t => {
       if (t.id === id) {
-        const updated = { ...t, [campo]: valor };
+        const updated = { ...t, [campo]: valor, updatedAt: getUpdatedAt() };
         if (campo === 'monto' || campo === 'concepto') {
           logTransaction('update', updated);
         }
@@ -690,7 +696,8 @@ export default function BookspaceERP() {
       estado: 'nuevo',
       plan: 'basico',
       fuente: 'Google',
-      notas: ''
+      notas: '',
+      updatedAt: getUpdatedAt()
     };
     setLeads(prev => [nuevo, ...prev]);
     logLead('create', nuevo);
@@ -705,18 +712,20 @@ export default function BookspaceERP() {
       return;
     }
 
+    const updatedAt = getUpdatedAt();
     const nuevoCliente = {
       id: Date.now(),
       nombre: editData.venue || editData.contacto,
       rfc: '',
       email: editData.email || '',
       tel: editData.tel || '',
-      notas: `Convertido de lead. Plan: ${PLANES.find(p => p.id === editData.plan)?.nombre}`
+      notas: `Convertido de lead. Plan: ${PLANES.find(p => p.id === editData.plan)?.nombre}`,
+      updatedAt
     };
 
     setCli(prev => [nuevoCliente, ...prev]);
-    setLeads(prev => prev.map(l => l.id === editData.id ? { ...l, estado: 'cerrado' } : l));
-    logLead('status_change', { ...editData, estado: 'cerrado' }, editData.estado);
+    setLeads(prev => prev.map(l => l.id === editData.id ? { ...l, estado: 'cerrado', updatedAt } : l));
+    logLead('status_change', { ...editData, estado: 'cerrado', updatedAt }, editData.estado);
     logClient('create', nuevoCliente);
     cerrarModal();
     notify('¡Convertido a cliente!');
@@ -734,7 +743,8 @@ export default function BookspaceERP() {
       lugar: '',
       tipo: 'presencial',
       notas: '',
-      estado: 'pendiente'
+      estado: 'pendiente',
+      updatedAt: getUpdatedAt()
     };
     setJuntas(prev => [nueva, ...prev]);
     logMeeting('create', nueva);
@@ -743,7 +753,7 @@ export default function BookspaceERP() {
   };
 
   const agregarCliente = () => {
-    const nuevo = { id: Date.now(), nombre: '', rfc: '', email: '', tel: '', notas: '' };
+    const nuevo = { id: Date.now(), nombre: '', rfc: '', email: '', tel: '', notas: '', updatedAt: getUpdatedAt() };
     setCli(prev => [nuevo, ...prev]);
     logClient('create', nuevo);
     abrirModal('cli', nuevo);
@@ -751,7 +761,7 @@ export default function BookspaceERP() {
   };
 
   const agregarProveedor = () => {
-    const nuevo = { id: Date.now(), nombre: '', rfc: '', email: '', tel: '', banco: '', cuenta: '' };
+    const nuevo = { id: Date.now(), nombre: '', rfc: '', email: '', tel: '', banco: '', cuenta: '', updatedAt: getUpdatedAt() };
     setProv(prev => [nuevo, ...prev]);
     logProvider('create', nuevo);
     abrirModal('prov', nuevo);
@@ -759,7 +769,7 @@ export default function BookspaceERP() {
   };
 
   const agregarEmpleado = () => {
-    const nuevo = { id: Date.now(), nombre: '', rfc: '', puesto: '', salario: '', fecha: new Date().toISOString().split('T')[0] };
+    const nuevo = { id: Date.now(), nombre: '', rfc: '', puesto: '', salario: '', fecha: new Date().toISOString().split('T')[0], updatedAt: getUpdatedAt() };
     setEmp(prev => [nuevo, ...prev]);
     logEmployee('create', nuevo);
     abrirModal('emp', nuevo);
@@ -784,7 +794,8 @@ export default function BookspaceERP() {
       sub: 0,
       iva: 0,
       total: 0,
-      notas: ''
+      notas: '',
+      updatedAt: getUpdatedAt()
     };
     setFact(prev => [nueva, ...prev]);
     logInvoice('create', nueva);

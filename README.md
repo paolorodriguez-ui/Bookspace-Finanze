@@ -105,6 +105,7 @@ Bookspace-Finanze/
 
 1. **[MEJORAS_FASE_1.md](./MEJORAS_FASE_1.md)** - Documentación completa de mejoras
 2. **[GUIA_RAPIDA.md](./GUIA_RAPIDA.md)** - Guía de uso rápido con ejemplos
+3. **[docs/data-model.md](./docs/data-model.md)** - Contrato de datos y sincronización (`updatedAt`)
 
 ### Inicio Rápido
 

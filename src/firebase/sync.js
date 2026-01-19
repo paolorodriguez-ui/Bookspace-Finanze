@@ -308,6 +308,22 @@ export const syncDataWithCloud = async (userId, localData, localVersion) => {
 const mergeData = (localData, cloudData) => {
   const mergeArrays = (local = [], cloud = []) => {
     const merged = new Map();
+    const normalizeUpdatedAt = (value) => {
+      if (!value) return 0;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = Date.parse(value);
+        if (!Number.isNaN(parsed)) return parsed;
+        const asNumber = Number(value);
+        return Number.isNaN(asNumber) ? 0 : asNumber;
+      }
+      if (value instanceof Date) return value.getTime();
+      if (typeof value === 'object') {
+        if (typeof value.toMillis === 'function') return value.toMillis();
+        if (typeof value.seconds === 'number') return value.seconds * 1000;
+      }
+      return 0;
+    };
 
     // Agregar elementos locales
     local.forEach(item => {
@@ -324,8 +340,8 @@ const mergeData = (localData, cloudData) => {
           merged.set(item.id, item);
         } else {
           // Mantener el más reciente basado en updatedAt o fecha
-          const localTime = existing.updatedAt || existing.fecha || 0;
-          const cloudTime = item.updatedAt || item.fecha || 0;
+          const localTime = normalizeUpdatedAt(existing.updatedAt) || normalizeUpdatedAt(existing.fecha);
+          const cloudTime = normalizeUpdatedAt(item.updatedAt) || normalizeUpdatedAt(item.fecha);
           if (cloudTime > localTime) {
             merged.set(item.id, item);
           }
