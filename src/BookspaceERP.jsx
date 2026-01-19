@@ -7,6 +7,7 @@ import { AuthModal, SyncIndicator } from './components/auth';
 import { UserMenu } from './components/layout';
 import { saveUserDataToCloud, loadUserDataFromCloud, isFirebaseConfigured } from './firebase';
 import { ActivityLog, ActivityWidget } from './components/ActivityLog';
+import MeetingsCalendar from './components/calendar/MeetingsCalendar';
 
 // ========== CONSTANTES ==========
 const CAT_ING = ['Comisiones', 'Premium', 'Premium +', 'Silver', 'Gold', 'Capital', 'Préstamo', 'Otro'];
@@ -1103,6 +1104,7 @@ export default function BookspaceERP() {
   const navItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
     { id: 'crm', icon: Target, label: 'CRM' },
+    { id: 'calendario', icon: CalendarDays, label: 'Calendario' },
     { id: 'facturas', icon: FileText, label: 'Facturas' },
     { id: 'registros', icon: Receipt, label: 'Registros' },
     { id: 'database', icon: Database, label: 'Base de datos' },
@@ -1636,6 +1638,31 @@ export default function BookspaceERP() {
                   <p className="text-[#b7bac3]">No hay leads con estos filtros</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ===== CALENDARIO ===== */}
+          {tab === 'calendario' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-[#b7bac3] text-sm">{juntas.length} juntas registradas</p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => agregarJunta()}
+                    className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20"
+                  >
+                    <Plus className="w-4 h-4" />Nueva Junta
+                  </button>
+                </div>
+              </div>
+
+              <MeetingsCalendar
+                meetings={juntas}
+                leads={leads}
+                onSelectMeeting={(meeting) => abrirModal('junta', meeting)}
+              />
             </div>
           )}
 
