@@ -96,3 +96,27 @@ export const saveAllData = async (data) => {
 
   await Promise.all(savePromises);
 };
+
+export const saveTransactions = async (transactions) =>
+  saveToStorage(STORAGE_KEYS.TRANSACTIONS, transactions);
+
+export const saveClients = async (clients) =>
+  saveToStorage(STORAGE_KEYS.CLIENTS, clients);
+
+export const saveProviders = async (providers) =>
+  saveToStorage(STORAGE_KEYS.PROVIDERS, providers);
+
+export const saveEmployees = async (employees) =>
+  saveToStorage(STORAGE_KEYS.EMPLOYEES, employees);
+
+export const saveLeads = async (leads) =>
+  saveToStorage(STORAGE_KEYS.LEADS, leads);
+
+export const saveInvoices = async (invoices) =>
+  saveToStorage(STORAGE_KEYS.INVOICES, invoices);
+
+export const saveMeetings = async (meetings) =>
+  saveToStorage(STORAGE_KEYS.MEETINGS, meetings);
+
+export const saveConfig = async (config) =>
+  saveToStorage(STORAGE_KEYS.CONFIG, config);

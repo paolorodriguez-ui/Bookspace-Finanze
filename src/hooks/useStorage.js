@@ -1,5 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import { loadAllData, saveAllData } from '../utils/storage';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  loadAllData,
+  saveClients,
+  saveConfig,
+  saveEmployees,
+  saveInvoices,
+  saveLeads,
+  saveMeetings,
+  saveProviders,
+  saveTransactions,
+} from '../utils/storage';
 import { handleError } from '../utils/errorHandling';
 
 /**
@@ -19,6 +29,9 @@ export const useStorage = (notifyFn) => {
     meetings: [],
     config: { empresa: 'Bookspace', rfc: '', dir: '', tel: '', email: '' }
   });
+  const prevDataRef = useRef({});
+  const debounceTimersRef = useRef({});
+  const debounceMs = 1000;
 
   // Cargar datos al montar
   useEffect(() => {
@@ -36,21 +49,67 @@ export const useStorage = (notifyFn) => {
     loadData();
   }, [notifyFn]);
 
-  // Guardar datos con debounce
+  useEffect(() => {
+    if (!loading) {
+      prevDataRef.current = {
+        transactions: data.transactions,
+        clients: data.clients,
+        providers: data.providers,
+        employees: data.employees,
+        leads: data.leads,
+        invoices: data.invoices,
+        meetings: data.meetings,
+        config: data.config,
+      };
+    }
+  }, [loading]);
+
+  // Guardar datos con debounce por entidad
   useEffect(() => {
     if (loading) return;
 
-    const saveData = async () => {
-      try {
-        await saveAllData(data);
-      } catch (error) {
-        handleError(error, 'useStorage.saveData', notifyFn);
-      }
+    const saveByEntity = {
+      transactions: saveTransactions,
+      clients: saveClients,
+      providers: saveProviders,
+      employees: saveEmployees,
+      leads: saveLeads,
+      invoices: saveInvoices,
+      meetings: saveMeetings,
+      config: saveConfig,
     };
 
-    const timer = setTimeout(saveData, 1000); // Aumentado a 1s
-    return () => clearTimeout(timer);
+    const prevData = prevDataRef.current;
+    const entityKeys = Object.keys(saveByEntity);
+    entityKeys.forEach((key) => {
+      if (prevData[key] === data[key]) return;
+
+      if (debounceTimersRef.current[key]) {
+        clearTimeout(debounceTimersRef.current[key]);
+      }
+
+      debounceTimersRef.current[key] = setTimeout(async () => {
+        try {
+          await saveByEntity[key](data[key]);
+        } catch (error) {
+          handleError(error, `useStorage.saveData.${key}`, notifyFn);
+        }
+      }, debounceMs);
+
+      prevDataRef.current[key] = data[key];
+    });
+
   }, [data, loading, notifyFn]);
+
+  useEffect(() => (
+    () => {
+      Object.values(debounceTimersRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
+    }
+  ), []);
 
   // Métodos para actualizar cada tipo de dato
   const updateTransactions = useCallback((transactions) => {
