@@ -431,6 +431,14 @@ export default function TasksBoard({ tasks, onTasksChange, userId, isAuthenticat
                           updateTask(task.id, { assignees: uniqueValues(values) });
                         }}
                         className="w-full mt-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none min-h-[100px]"
+                        disabled={isSavingTask}
+                      >
+                        {userOptions.map((user) => (
+                          <option key={user.uid} value={user.uid}>
+                            {getAssigneeLabel(user.uid)}
+                          </option>
+                        ))}
+                      </select>
                     <div className="flex items-center gap-2 mt-3">
                       <input
                         value={assigneeDrafts[task.id] || ''}
@@ -445,12 +453,8 @@ export default function TasksBoard({ tasks, onTasksChange, userId, isAuthenticat
                         className="px-3 py-2 bg-[#4f67eb] text-white rounded-lg text-xs font-medium hover:bg-[#2a1d89] transition flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={isSavingTask}
                       >
-                        {userOptions.map((user) => (
-                          <option key={user.uid} value={user.uid}>
-                            {getAssigneeLabel(user.uid)}
-                          </option>
-                        ))}
-                      </select>
+                        Agregar
+                      </button>
                     </div>
                   </div>
                 </div>
