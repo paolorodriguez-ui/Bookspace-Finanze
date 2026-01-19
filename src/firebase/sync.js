@@ -2,10 +2,12 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocs,
   onSnapshot,
   serverTimestamp,
   collection,
-  writeBatch
+  writeBatch,
+  query
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './config';
 
@@ -13,14 +15,119 @@ import { db, isFirebaseConfigured } from './config';
  * Nombres de las colecciones en Firestore
  */
 const COLLECTIONS = {
+  USERS: 'users',
   USERS_DATA: 'users_data'
 };
 
-/**
- * Obtener referencia al documento del usuario
- */
-const getUserDocRef = (userId) => {
-  return doc(db, COLLECTIONS.USERS_DATA, userId);
+const USER_SUBCOLLECTIONS = [
+  'transactions',
+  'clients',
+  'providers',
+  'employees',
+  'leads',
+  'invoices',
+  'meetings'
+];
+
+const createEmptyUserData = () => ({
+  transactions: [],
+  clients: [],
+  providers: [],
+  employees: [],
+  leads: [],
+  invoices: [],
+  meetings: [],
+  config: {}
+});
+
+const getUserDocRef = (userId) => doc(db, COLLECTIONS.USERS, userId);
+
+const getLegacyUserDocRef = (userId) => doc(db, COLLECTIONS.USERS_DATA, userId);
+
+const getUserCollectionRef = (userId, collectionName) => (
+  collection(db, COLLECTIONS.USERS, userId, collectionName)
+);
+
+const getValidDocId = (item) => {
+  if (!item) return null;
+  const id = item.id ?? item.uid ?? item.key;
+  if (id === null || id === undefined) return null;
+  return String(id);
+};
+
+const commitBatchWrites = async (writes) => {
+  for (const write of writes) {
+    await write.commit();
+  }
+};
+
+const writeCollectionItems = async (userId, collectionName, items = []) => {
+  if (!items.length) return;
+
+  const chunkSize = 400;
+  const batches = [];
+
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const batch = writeBatch(db);
+    const chunk = items.slice(i, i + chunkSize);
+
+    chunk.forEach((item) => {
+      const docId = getValidDocId(item);
+      if (!docId) {
+        console.warn(`Item sin id en ${collectionName}, omitido`, item);
+        return;
+      }
+      const docRef = doc(getUserCollectionRef(userId, collectionName), docId);
+      batch.set(docRef, { ...item, id: docId }, { merge: true });
+    });
+
+    batches.push(batch);
+  }
+
+  await commitBatchWrites(batches);
+};
+
+const readCollectionItems = async (userId, collectionName) => {
+  const collectionRef = getUserCollectionRef(userId, collectionName);
+  const snapshot = await getDocs(query(collectionRef));
+  return snapshot.docs.map((docSnap) => {
+    const data = docSnap.data();
+    return { ...data, id: data.id ?? docSnap.id };
+  });
+};
+
+const migrateLegacyUserData = async (userId) => {
+  const legacyDocRef = getLegacyUserDocRef(userId);
+  const legacySnap = await getDoc(legacyDocRef);
+
+  if (!legacySnap.exists()) {
+    return;
+  }
+
+  const legacyData = legacySnap.data();
+
+  if (legacyData?.migratedToUsers) {
+    return;
+  }
+
+  const dataToMigrate = {
+    ...createEmptyUserData(),
+    transactions: legacyData.transactions || [],
+    clients: legacyData.clients || [],
+    providers: legacyData.providers || [],
+    employees: legacyData.employees || [],
+    leads: legacyData.leads || [],
+    invoices: legacyData.invoices || [],
+    meetings: legacyData.meetings || [],
+    config: legacyData.config || {}
+  };
+
+  await saveUserDataToCloud(userId, dataToMigrate);
+
+  await setDoc(legacyDocRef, {
+    migratedToUsers: true,
+    migratedAt: serverTimestamp()
+  }, { merge: true });
 };
 
 /**
@@ -34,19 +141,21 @@ export const saveUserDataToCloud = async (userId, data) => {
 
   try {
     const userDocRef = getUserDocRef(userId);
+    const userData = data || createEmptyUserData();
 
     await setDoc(userDocRef, {
-      transactions: data.transactions || [],
-      clients: data.clients || [],
-      providers: data.providers || [],
-      employees: data.employees || [],
-      leads: data.leads || [],
-      invoices: data.invoices || [],
-      meetings: data.meetings || [],
-      config: data.config || {},
+      config: userData.config || {},
       updatedAt: serverTimestamp(),
       version: Date.now()
     }, { merge: true });
+
+    await writeCollectionItems(userId, 'transactions', userData.transactions || []);
+    await writeCollectionItems(userId, 'clients', userData.clients || []);
+    await writeCollectionItems(userId, 'providers', userData.providers || []);
+    await writeCollectionItems(userId, 'employees', userData.employees || []);
+    await writeCollectionItems(userId, 'leads', userData.leads || []);
+    await writeCollectionItems(userId, 'invoices', userData.invoices || []);
+    await writeCollectionItems(userId, 'meetings', userData.meetings || []);
 
     return { success: true };
   } catch (error) {
@@ -64,28 +173,34 @@ export const loadUserDataFromCloud = async (userId) => {
   }
 
   try {
+    await migrateLegacyUserData(userId);
+
     const userDocRef = getUserDocRef(userId);
     const docSnap = await getDoc(userDocRef);
 
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return {
-        success: true,
-        data: {
-          transactions: data.transactions || [],
-          clients: data.clients || [],
-          providers: data.providers || [],
-          employees: data.employees || [],
-          leads: data.leads || [],
-          invoices: data.invoices || [],
-          meetings: data.meetings || [],
-          config: data.config || {}
-        },
-        version: data.version
-      };
+    if (!docSnap.exists()) {
+      return { success: true, data: null };
     }
 
-    return { success: true, data: null };
+    const data = docSnap.data();
+    const collections = await Promise.all(
+      USER_SUBCOLLECTIONS.map((collectionName) => readCollectionItems(userId, collectionName))
+    );
+
+    const mapped = USER_SUBCOLLECTIONS.reduce((acc, collectionName, index) => {
+      acc[collectionName] = collections[index];
+      return acc;
+    }, {});
+
+    return {
+      success: true,
+      data: {
+        ...createEmptyUserData(),
+        ...mapped,
+        config: data.config || {}
+      },
+      version: data.version
+    };
   } catch (error) {
     console.error('Error cargando datos de la nube:', error);
     return { success: false, error: error.message };
@@ -100,26 +215,45 @@ export const subscribeToUserData = (userId, callback) => {
     return () => {};
   }
 
-  const userDocRef = getUserDocRef(userId);
+  const currentData = createEmptyUserData();
+  let currentVersion = 0;
 
-  return onSnapshot(userDocRef, (doc) => {
-    if (doc.exists()) {
-      const data = doc.data();
-      callback({
-        transactions: data.transactions || [],
-        clients: data.clients || [],
-        providers: data.providers || [],
-        employees: data.employees || [],
-        leads: data.leads || [],
-        invoices: data.invoices || [],
-        meetings: data.meetings || [],
-        config: data.config || {},
-        version: data.version
-      });
+  const notify = () => {
+    callback({
+      ...currentData,
+      version: currentVersion
+    });
+  };
+
+  const userDocRef = getUserDocRef(userId);
+  const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      currentData.config = data.config || {};
+      currentVersion = data.version || currentVersion;
+      notify();
     }
   }, (error) => {
-    console.error('Error en suscripción de datos:', error);
+    console.error('Error en suscripción de usuario:', error);
   });
+
+  const unsubscribes = USER_SUBCOLLECTIONS.map((collectionName) => {
+    const collectionRef = getUserCollectionRef(userId, collectionName);
+    return onSnapshot(collectionRef, (snapshot) => {
+      currentData[collectionName] = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return { ...data, id: data.id ?? docSnap.id };
+      });
+      notify();
+    }, (error) => {
+      console.error(`Error en suscripción de ${collectionName}:`, error);
+    });
+  });
+
+  return () => {
+    unsubscribeUser();
+    unsubscribes.forEach((unsubscribe) => unsubscribe());
+  };
 };
 
 /**

@@ -32,6 +32,51 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
   // Verificar si Firebase está configurado
   const isEnabled = isFirebaseConfigured() && !!userId;
 
+  const mergeEntityArrays = useCallback((local = [], cloud = []) => {
+    const merged = new Map();
+
+    local.forEach((item) => {
+      if (item?.id) {
+        merged.set(item.id, item);
+      }
+    });
+
+    cloud.forEach((item) => {
+      if (item?.id) {
+        const existing = merged.get(item.id);
+        if (!existing) {
+          merged.set(item.id, item);
+          return;
+        }
+
+        const localTime = existing.updatedAt || existing.fecha || 0;
+        const cloudTime = item.updatedAt || item.fecha || 0;
+        if (cloudTime > localTime) {
+          merged.set(item.id, item);
+        }
+      }
+    });
+
+    return Array.from(merged.values());
+  }, []);
+
+  const mergeCloudWithLocal = useCallback((cloudData) => {
+    if (!localData) {
+      return cloudData;
+    }
+
+    return {
+      transactions: mergeEntityArrays(localData.transactions, cloudData.transactions),
+      clients: mergeEntityArrays(localData.clients, cloudData.clients),
+      providers: mergeEntityArrays(localData.providers, cloudData.providers),
+      employees: mergeEntityArrays(localData.employees, cloudData.employees),
+      leads: mergeEntityArrays(localData.leads, cloudData.leads),
+      invoices: mergeEntityArrays(localData.invoices, cloudData.invoices),
+      meetings: mergeEntityArrays(localData.meetings, cloudData.meetings),
+      config: { ...localData.config, ...cloudData.config }
+    };
+  }, [localData, mergeEntityArrays]);
+
   // Cargar datos iniciales de la nube
   const loadFromCloud = useCallback(async () => {
     if (!isEnabled) return null;
@@ -132,7 +177,8 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     const unsubscribe = subscribeToUserData(userId, (cloudData) => {
       // Solo actualizar si los datos de la nube son más recientes
       if (cloudData.version > localVersionRef.current) {
-        onDataUpdate?.(cloudData);
+        const mergedData = mergeCloudWithLocal(cloudData);
+        onDataUpdate?.(mergedData);
         localVersionRef.current = cloudData.version;
         setSyncStatus(SYNC_STATUS.SYNCED);
         setLastSyncTime(new Date());
@@ -143,7 +189,7 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
       unsubscribe();
       isSubscribedRef.current = false;
     };
-  }, [userId, onDataUpdate, isEnabled]);
+  }, [userId, onDataUpdate, isEnabled, mergeCloudWithLocal]);
 
   // Detectar estado offline
   useEffect(() => {
