@@ -6,12 +6,18 @@ import {
   updateProfile,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import { auth } from './config';
+import { auth, isFirebaseConfigured } from './config';
 
 /**
  * Registrar un nuevo usuario
  */
 export const registerUser = async (email, password, displayName) => {
+  if (!auth || !isFirebaseConfigured()) {
+    return {
+      success: false,
+      error: getAuthErrorMessage('auth/configuration-not-found')
+    };
+  }
   try {
     console.log('Intentando registrar usuario:', email);
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -46,6 +52,12 @@ export const registerUser = async (email, password, displayName) => {
  * Iniciar sesión
  */
 export const loginUser = async (email, password) => {
+  if (!auth || !isFirebaseConfigured()) {
+    return {
+      success: false,
+      error: getAuthErrorMessage('auth/configuration-not-found')
+    };
+  }
   try {
     console.log('Intentando iniciar sesión:', email);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -68,6 +80,9 @@ export const loginUser = async (email, password) => {
  * Cerrar sesión
  */
 export const logoutUser = async () => {
+  if (!auth || !isFirebaseConfigured()) {
+    return { success: false, error: getAuthErrorMessage('auth/configuration-not-found') };
+  }
   try {
     await signOut(auth);
     return { success: true, message: 'Sesión cerrada' };
@@ -80,6 +95,12 @@ export const logoutUser = async () => {
  * Enviar email de recuperación de contraseña
  */
 export const resetPassword = async (email) => {
+  if (!auth || !isFirebaseConfigured()) {
+    return {
+      success: false,
+      error: getAuthErrorMessage('auth/configuration-not-found')
+    };
+  }
   try {
     await sendPasswordResetEmail(auth, email);
     return {
@@ -98,6 +119,10 @@ export const resetPassword = async (email) => {
  * Suscribirse a cambios de autenticación
  */
 export const subscribeToAuthChanges = (callback) => {
+  if (!auth || !isFirebaseConfigured()) {
+    callback(null);
+    return () => {};
+  }
   return onAuthStateChanged(auth, callback);
 };
 
@@ -105,6 +130,9 @@ export const subscribeToAuthChanges = (callback) => {
  * Obtener usuario actual
  */
 export const getCurrentUser = () => {
+  if (!auth || !isFirebaseConfigured()) {
+    return null;
+  }
   return auth.currentUser;
 };
 
