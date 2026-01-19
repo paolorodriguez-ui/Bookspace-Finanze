@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Download, CheckCircle, Users, Receipt, Settings, X, BarChart3, Scale, ArrowUpRight, ArrowDownRight, Wallet, Building, CreditCard, PiggyBank, Search, Target, UserPlus, FileText, Printer, TrendingUp, DollarSign, User, Calendar, Clock, Filter, PieChart, Activity, AlertTriangle, CalendarDays, FileSpreadsheet, Home, Bell, ChevronDown, MoreHorizontal, Eye, Edit, Menu, Database } from 'lucide-react';
+import { Plus, Trash2, Download, CheckCircle, Users, Receipt, Settings, X, BarChart3, Scale, ArrowUpRight, ArrowDownRight, Wallet, Building, CreditCard, PiggyBank, Search, Target, UserPlus, FileText, Printer, TrendingUp, DollarSign, User, Calendar, Clock, Filter, PieChart, Activity, AlertTriangle, CalendarDays, FileSpreadsheet, Home, Bell, ChevronDown, MoreHorizontal, Eye, Edit, Menu, Database, Cloud, RefreshCw } from 'lucide-react';
+
+// Auth & Sync
+import { useAuth, useCloudSync, SYNC_STATUS } from './hooks';
+import { AuthModal, SyncIndicator } from './components/auth';
+import { UserMenu } from './components/layout';
+import { saveUserDataToCloud, loadUserDataFromCloud, isFirebaseConfigured } from './firebase';
 
 // ========== CONSTANTES ==========
 const CAT_ING = ['Comisiones', 'Premium', 'Premium +', 'Silver', 'Gold', 'Capital', 'Préstamo', 'Otro'];
@@ -77,6 +83,56 @@ export default function BookspaceERP() {
   const [editData, setEditData] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Auth Modal
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Autenticación
+  const {
+    user,
+    loading: authLoading,
+    isAuthenticated,
+    isConfigured: firebaseConfigured,
+    login,
+    logout,
+    register,
+    sendPasswordReset
+  } = useAuth();
+
+  // Datos para sincronización
+  const allData = useMemo(() => ({
+    transactions: tx,
+    clients: cli,
+    providers: prov,
+    employees: emp,
+    leads,
+    invoices: fact,
+    meetings: juntas,
+    config: cfg
+  }), [tx, cli, prov, emp, leads, fact, juntas, cfg]);
+
+  // Callback para actualizar datos desde la nube
+  const handleCloudDataUpdate = useCallback((cloudData) => {
+    if (cloudData.transactions) setTx(cloudData.transactions);
+    if (cloudData.clients) setCli(cloudData.clients);
+    if (cloudData.providers) setProv(cloudData.providers);
+    if (cloudData.employees) setEmp(cloudData.employees);
+    if (cloudData.leads) setLeads(cloudData.leads);
+    if (cloudData.invoices) setFact(cloudData.invoices);
+    if (cloudData.meetings) setJuntas(cloudData.meetings);
+    if (cloudData.config) setCfg(cloudData.config);
+  }, []);
+
+  // Sincronización con la nube
+  const {
+    isEnabled: syncEnabled,
+    syncStatus,
+    lastSyncTime,
+    error: syncError,
+    loadFromCloud,
+    saveToCloudDebounced,
+    syncWithCloud
+  } = useCloudSync(user?.uid, allData, handleCloudDataUpdate);
+
   // Cargar datos
   useEffect(() => {
     const loadData = async () => {
@@ -108,12 +164,13 @@ export default function BookspaceERP() {
     }
   }, []);
 
-  // Guardar datos
+  // Guardar datos (local + nube)
   useEffect(() => {
     if (loading) return;
-    
+
     const saveData = async () => {
       try {
+        // Guardar localmente
         await window.storage.set('bs12-tx', JSON.stringify(tx));
         await window.storage.set('bs12-cli', JSON.stringify(cli));
         await window.storage.set('bs12-prov', JSON.stringify(prov));
@@ -122,14 +179,38 @@ export default function BookspaceERP() {
         await window.storage.set('bs12-fact', JSON.stringify(fact));
         await window.storage.set('bs12-juntas', JSON.stringify(juntas));
         await window.storage.set('bs12-cfg', JSON.stringify(cfg));
+
+        // Sincronizar con la nube si está habilitado
+        if (syncEnabled && isAuthenticated) {
+          saveToCloudDebounced(allData);
+        }
       } catch (e) {
         console.log('Save error');
       }
     };
-    
+
     const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
-  }, [tx, cli, prov, emp, leads, fact, juntas, cfg, loading]);
+  }, [tx, cli, prov, emp, leads, fact, juntas, cfg, loading, syncEnabled, isAuthenticated, allData, saveToCloudDebounced]);
+
+  // Sincronizar cuando el usuario inicie sesión
+  useEffect(() => {
+    if (isAuthenticated && user?.uid && !loading) {
+      // Intentar cargar datos de la nube al iniciar sesión
+      const syncOnLogin = async () => {
+        try {
+          const cloudData = await loadFromCloud();
+          if (cloudData) {
+            handleCloudDataUpdate(cloudData);
+            notify('Datos sincronizados desde la nube');
+          }
+        } catch (e) {
+          console.log('Error syncing on login:', e);
+        }
+      };
+      syncOnLogin();
+    }
+  }, [isAuthenticated, user?.uid, loading]);
 
   const notify = (text, type = 'success') => {
     setMsg({ text, type });
@@ -1082,12 +1163,30 @@ export default function BookspaceERP() {
                 )}
               </button>
 
-              {/* Profile */}
-              <div className="flex items-center gap-2 pl-4 border-l border-gray-100">
-                <div className="w-9 h-9 bg-[#4f67eb] rounded-xl flex items-center justify-center text-white font-bold text-sm">
-                  {cfg.empresa?.charAt(0) || 'B'}
-                </div>
-              </div>
+              {/* Sync Status */}
+              {isAuthenticated && (
+                <SyncIndicator
+                  status={syncStatus}
+                  lastSyncTime={lastSyncTime}
+                  error={syncError}
+                  onRetry={syncWithCloud}
+                />
+              )}
+
+              {/* Profile / User Menu */}
+              <UserMenu
+                user={user}
+                isAuthenticated={isAuthenticated}
+                syncStatus={syncStatus}
+                onLogin={() => setAuthModalOpen(true)}
+                onLogout={async () => {
+                  const result = await logout();
+                  if (result.success) {
+                    notify('Sesión cerrada');
+                  }
+                }}
+                companyName={cfg.empresa}
+              />
             </div>
           </div>
         </header>
@@ -2423,6 +2522,27 @@ export default function BookspaceERP() {
           </div>
         </div>
       )}
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onLogin={async (email, password) => {
+          const result = await login(email, password);
+          if (result.success) {
+            notify('Sesión iniciada correctamente');
+          }
+          return result;
+        }}
+        onRegister={async (email, password, displayName) => {
+          const result = await register(email, password, displayName);
+          if (result.success) {
+            notify('Cuenta creada exitosamente');
+          }
+          return result;
+        }}
+        onResetPassword={sendPasswordReset}
+      />
     </div>
   );
 }
