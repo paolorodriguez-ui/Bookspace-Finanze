@@ -57,6 +57,9 @@ export default function BookspaceERP() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [crmView, setCrmView] = useState('pipeline');
+  const [draggingLeadId, setDraggingLeadId] = useState(null);
+  const [dragOverEstado, setDragOverEstado] = useState(null);
 
   // Datos
   const [tx, setTx] = useState([]);
@@ -131,6 +134,61 @@ export default function BookspaceERP() {
   const notify = (text, type = 'success') => {
     setMsg({ text, type });
     setTimeout(() => setMsg(null), 2500);
+  };
+
+  const obtenerPrecioPlan = (planId) => PLANES.find(p => p.id === planId)?.precio || 0;
+
+  const moverLeadEstado = (leadId, nuevoEstado) => {
+    setLeads(prev => {
+      const leadActual = prev.find(l => l.id === leadId);
+      if (!leadActual || leadActual.estado === nuevoEstado) {
+        return prev;
+      }
+      return prev.map(l => l.id === leadId ? { ...l, estado: nuevoEstado } : l);
+    });
+    const nombreEstado = EST_LEAD.find(e => e.id === nuevoEstado)?.nombre || nuevoEstado;
+    notify(`Lead movido a ${nombreEstado}`);
+  };
+
+  const convertirLeadRapido = (lead) => {
+    if (!lead) return;
+    if (!lead.venue && !lead.contacto) {
+      notify('Completa nombre del venue o contacto', 'error');
+      return;
+    }
+
+    const nuevoCliente = {
+      id: Date.now(),
+      nombre: lead.venue || lead.contacto,
+      rfc: '',
+      email: lead.email || '',
+      tel: lead.tel || '',
+      notas: `Convertido de lead. Plan: ${PLANES.find(p => p.id === lead.plan)?.nombre}`
+    };
+
+    setCli(prev => [nuevoCliente, ...prev]);
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, estado: 'cerrado' } : l));
+    notify('¡Convertido a cliente!');
+  };
+
+  const handleLeadDragStart = (event, leadId) => {
+    setDraggingLeadId(leadId);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(leadId));
+  };
+
+  const handleLeadDragEnd = () => {
+    setDraggingLeadId(null);
+    setDragOverEstado(null);
+  };
+
+  const handleLeadDrop = (event, estado) => {
+    event.preventDefault();
+    const draggedId = draggingLeadId || Number(event.dataTransfer.getData('text/plain'));
+    if (!draggedId) return;
+    moverLeadEstado(draggedId, estado);
+    setDraggingLeadId(null);
+    setDragOverEstado(null);
   };
 
   const renderCellValue = (column, row) => {
@@ -763,6 +821,32 @@ export default function BookspaceERP() {
     });
   }, [leads, filtro, filtroEstado]);
 
+  const leadsPorEstado = useMemo(() => {
+    const grouped = EST_LEAD.reduce((acc, estado) => {
+      acc[estado.id] = [];
+      return acc;
+    }, {});
+    leadsFiltrados.forEach(lead => {
+      if (grouped[lead.estado]) {
+        grouped[lead.estado].push(lead);
+      }
+    });
+    return grouped;
+  }, [leadsFiltrados]);
+
+  const pipelineTotales = useMemo(() => {
+    const totales = EST_LEAD.reduce((acc, estado) => {
+      acc[estado.id] = { count: 0, valor: 0 };
+      return acc;
+    }, {});
+    leadsFiltrados.forEach(lead => {
+      if (!totales[lead.estado]) return;
+      totales[lead.estado].count += 1;
+      totales[lead.estado].valor += obtenerPrecioPlan(lead.plan);
+    });
+    return totales;
+  }, [leadsFiltrados]);
+
   // ========== LOADING ==========
   if (loading) {
     return (
@@ -1170,7 +1254,23 @@ export default function BookspaceERP() {
                 <div>
                   <p className="text-[#b7bac3] text-sm">{leads.length} leads total • {crmStats.proceso} en proceso</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1">
+                    <button
+                      type="button"
+                      onClick={() => setCrmView('pipeline')}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition ${crmView === 'pipeline' ? 'bg-[#4f67eb] text-white' : 'text-[#2a1d89] hover:bg-gray-50'}`}
+                    >
+                      <Activity className="w-4 h-4" />Pipeline
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCrmView('cards')}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition ${crmView === 'cards' ? 'bg-[#4f67eb] text-white' : 'text-[#2a1d89] hover:bg-gray-50'}`}
+                    >
+                      <Menu className="w-4 h-4" />Tarjetas
+                    </button>
+                  </div>
                   <ExportMenu onCsv={() => exportarLeads('csv')} onJson={() => exportarLeads('json')} />
                   <button onClick={agregarLead} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
                     <Plus className="w-4 h-4" />Nuevo Lead
@@ -1209,39 +1309,146 @@ export default function BookspaceERP() {
                 </select>
               </div>
 
-              {/* Leads Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {leadsFiltrados.map(l => {
-                  const juntasLead = juntas.filter(j => j.leadId === l.id && j.estado === 'pendiente');
-                  return (
-                    <div
-                      key={l.id}
-                      onClick={() => abrirModal('lead', l)}
-                      className="bg-white border border-gray-100 rounded-2xl p-5 cursor-pointer hover:border-[#4f67eb] hover:shadow-lg hover:shadow-[#4f67eb]/5 transition-all"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-bold text-[#2a1d89]">{l.venue || 'Sin venue'}</p>
-                          <p className="text-[#b7bac3] text-sm">{l.contacto}</p>
-                        </div>
-                        <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${EST_LEAD.find(e => e.id === l.estado)?.cl}`}>
-                          {EST_LEAD.find(e => e.id === l.estado)?.nombre}
-                        </span>
-                      </div>
-                      <div className="flex gap-2 text-xs mb-3">
-                        <span className="bg-gray-100 text-[#2a1d89] px-2 py-1 rounded-lg">{l.tipo}</span>
-                        <span className="bg-[#4f67eb]/10 text-[#4f67eb] px-2 py-1 rounded-lg font-medium">{PLANES.find(p => p.id === l.plan)?.nombre}</span>
-                      </div>
-                      {juntasLead.length > 0 && (
-                        <div className="flex items-center gap-2 text-[#4f67eb] text-xs pt-3 border-t border-gray-100">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {juntasLead.length} junta{juntasLead.length > 1 ? 's' : ''} pendiente{juntasLead.length > 1 ? 's' : ''}
-                        </div>
-                      )}
+              {crmView === 'pipeline' && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold text-[#2a1d89]">Pipeline completo</h4>
+                      <p className="text-xs text-[#b7bac3]">Arrastra y suelta los leads para avanzar etapas o actualizarlos al instante.</p>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="text-xs text-[#b7bac3] flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1"><Target className="w-3.5 h-3.5 text-[#4f67eb]" />{leadsFiltrados.length} leads filtrados</span>
+                      <span className="inline-flex items-center gap-1"><DollarSign className="w-3.5 h-3.5 text-emerald-500" />{fmt(crmStats.potencial)} potencial/mes</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+                    {EST_LEAD.map(estado => {
+                      const leadsEstado = leadsPorEstado[estado.id] || [];
+                      const totalEstado = pipelineTotales[estado.id]?.valor || 0;
+                      return (
+                        <div
+                          key={estado.id}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            setDragOverEstado(estado.id);
+                          }}
+                          onDragLeave={() => setDragOverEstado(null)}
+                          onDrop={(event) => handleLeadDrop(event, estado.id)}
+                          className={`rounded-2xl border p-3 min-h-[240px] transition ${dragOverEstado === estado.id ? 'border-[#4f67eb] bg-[#4f67eb]/5 ring-2 ring-[#4f67eb]/30' : 'border-gray-100 bg-[#f8f9fc]'}`}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <span className={`text-[11px] font-semibold px-2 py-1 rounded-lg border ${estado.cl}`}>{estado.nombre}</span>
+                            <span className="text-xs text-[#2a1d89] font-semibold">{leadsEstado.length}</span>
+                          </div>
+
+                          <div className="space-y-3">
+                            {leadsEstado.map(lead => {
+                              const juntasPendientes = juntas.filter(j => j.leadId === lead.id && j.estado === 'pendiente');
+                              return (
+                                <div
+                                  key={lead.id}
+                                  draggable
+                                  onDragStart={(event) => handleLeadDragStart(event, lead.id)}
+                                  onDragEnd={handleLeadDragEnd}
+                                  onClick={() => abrirModal('lead', lead)}
+                                  className={`bg-white border border-gray-200 rounded-xl p-3 cursor-pointer hover:shadow-md transition ${draggingLeadId === lead.id ? 'opacity-60' : ''}`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-semibold text-[#2a1d89] truncate">{lead.venue || lead.contacto || 'Sin nombre'}</p>
+                                      <p className="text-xs text-[#b7bac3]">{lead.contacto || 'Sin contacto'}</p>
+                                    </div>
+                                    <span className="text-[11px] text-[#4f67eb] font-semibold">{PLANES.find(p => p.id === lead.plan)?.nombre}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-[11px] text-[#b7bac3] mt-2">
+                                    <span className="bg-gray-100 text-[#2a1d89] px-2 py-0.5 rounded-md">{lead.tipo}</span>
+                                    <span>{lead.ciudad || 'Sin ciudad'}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between mt-3">
+                                    <div className="flex items-center gap-2 text-[11px] text-[#4f67eb]">
+                                      <Calendar className="w-3.5 h-3.5" />
+                                      {juntasPendientes.length} pendiente{juntasPendientes.length === 1 ? '' : 's'}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          agregarJunta(lead.id);
+                                        }}
+                                        className="text-[11px] text-[#2a1d89] bg-gray-100 px-2 py-1 rounded-lg hover:bg-gray-200 transition"
+                                      >
+                                        + Junta
+                                      </button>
+                                      {lead.estado === 'cerrado' && (
+                                        <button
+                                          type="button"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            convertirLeadRapido(lead);
+                                          }}
+                                          className="text-[11px] text-emerald-700 bg-emerald-100 px-2 py-1 rounded-lg hover:bg-emerald-200 transition"
+                                        >
+                                          Convertir
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {leadsEstado.length === 0 && (
+                              <div className="border border-dashed border-gray-200 rounded-xl p-4 text-center text-xs text-[#b7bac3]">
+                                Arrastra leads aquí
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-3 text-xs text-[#2a1d89] font-semibold flex items-center justify-between">
+                            <span>Potencial</span>
+                            <span>{fmt(totalEstado)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {crmView === 'cards' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {leadsFiltrados.map(l => {
+                    const juntasLead = juntas.filter(j => j.leadId === l.id && j.estado === 'pendiente');
+                    return (
+                      <div
+                        key={l.id}
+                        onClick={() => abrirModal('lead', l)}
+                        className="bg-white border border-gray-100 rounded-2xl p-5 cursor-pointer hover:border-[#4f67eb] hover:shadow-lg hover:shadow-[#4f67eb]/5 transition-all"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="font-bold text-[#2a1d89]">{l.venue || 'Sin venue'}</p>
+                            <p className="text-[#b7bac3] text-sm">{l.contacto}</p>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${EST_LEAD.find(e => e.id === l.estado)?.cl}`}>
+                            {EST_LEAD.find(e => e.id === l.estado)?.nombre}
+                          </span>
+                        </div>
+                        <div className="flex gap-2 text-xs mb-3">
+                          <span className="bg-gray-100 text-[#2a1d89] px-2 py-1 rounded-lg">{l.tipo}</span>
+                          <span className="bg-[#4f67eb]/10 text-[#4f67eb] px-2 py-1 rounded-lg font-medium">{PLANES.find(p => p.id === l.plan)?.nombre}</span>
+                        </div>
+                        {juntasLead.length > 0 && (
+                          <div className="flex items-center gap-2 text-[#4f67eb] text-xs pt-3 border-t border-gray-100">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {juntasLead.length} junta{juntasLead.length > 1 ? 's' : ''} pendiente{juntasLead.length > 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {leadsFiltrados.length === 0 && (
                 <div className="text-center py-16">
