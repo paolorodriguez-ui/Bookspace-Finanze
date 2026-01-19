@@ -67,29 +67,61 @@ const commitBatchWrites = async (writes) => {
 };
 
 const writeCollectionItems = async (userId, collectionName, items = []) => {
-  if (!items.length) return;
-
   const chunkSize = 400;
   const batches = [];
+  const collectionRef = getUserCollectionRef(userId, collectionName);
+  const itemIds = new Set();
 
-  for (let i = 0; i < items.length; i += chunkSize) {
-    const batch = writeBatch(db);
-    const chunk = items.slice(i, i + chunkSize);
+  let batch = writeBatch(db);
+  let operationCount = 0;
 
-    chunk.forEach((item) => {
-      const docId = getValidDocId(item);
-      if (!docId) {
-        console.warn(`Item sin id en ${collectionName}, omitido`, item);
-        return;
-      }
-      const docRef = doc(getUserCollectionRef(userId, collectionName), docId);
-      batch.set(docRef, { ...item, id: docId }, { merge: true });
-    });
+  items.forEach((item) => {
+    const docId = getValidDocId(item);
+    if (!docId) {
+      console.warn(`Item sin id en ${collectionName}, omitido`, item);
+      return;
+    }
 
+    itemIds.add(docId);
+    const docRef = doc(collectionRef, docId);
+    batch.set(docRef, { ...item, id: docId }, { merge: true });
+    operationCount += 1;
+
+    if (operationCount === chunkSize) {
+      batches.push(batch);
+      batch = writeBatch(db);
+      operationCount = 0;
+    }
+  });
+
+  if (operationCount > 0) {
     batches.push(batch);
   }
 
-  await commitBatchWrites(batches);
+  const snapshot = await getDocs(query(collectionRef));
+  const docsToDelete = snapshot.docs.filter((docSnap) => !itemIds.has(docSnap.id));
+
+  batch = writeBatch(db);
+  operationCount = 0;
+
+  docsToDelete.forEach((docSnap) => {
+    batch.delete(docSnap.ref);
+    operationCount += 1;
+
+    if (operationCount === chunkSize) {
+      batches.push(batch);
+      batch = writeBatch(db);
+      operationCount = 0;
+    }
+  });
+
+  if (operationCount > 0) {
+    batches.push(batch);
+  }
+
+  if (batches.length > 0) {
+    await commitBatchWrites(batches);
+  }
 };
 
 const readCollectionItems = async (userId, collectionName) => {
