@@ -34,6 +34,13 @@ Sistema completo de gestión financiera y CRM para pequeños negocios, especiali
 - **JSON**: Para APIs y análisis
 - **Respaldo Completo**: Exportación total del sistema
 
+### ☁️ Sincronización en la Nube
+- **Multi-dispositivo**: Accede desde cualquier computadora
+- **Sincronización automática**: Cambios sincronizados en tiempo real
+- **Modo offline**: Funciona sin internet, sincroniza al reconectar
+- **Autenticación segura**: Login con email y contraseña
+- **Datos privados**: Cada usuario solo ve sus propios datos
+
 ## 🏗️ Arquitectura
 
 ### Estructura del Proyecto
@@ -57,7 +64,8 @@ Bookspace-Finanze/
 - **Framework**: React 18
 - **Estilos**: Tailwind CSS
 - **Iconos**: Lucide React
-- **Storage**: window.storage (Chrome Storage API)
+- **Storage local**: IndexedDB + localStorage
+- **Sincronización**: Firebase (Firestore + Auth)
 - **Tipografía**: Plus Jakarta Sans
 
 ## 🚀 Mejoras Implementadas (Fase 1)
@@ -114,6 +122,19 @@ import { usePagination } from './src/hooks';
 const { paginatedData } = usePagination(transactions, 20);
 ```
 
+## ☁️ Configurar Sincronización en la Nube
+
+Para habilitar la sincronización entre dispositivos, necesitas configurar Firebase:
+
+1. Sigue la guía completa en **[FIREBASE_SETUP.md](./FIREBASE_SETUP.md)**
+2. Crea un archivo `.env` con tus credenciales
+3. Reinicia la aplicación
+
+Una vez configurado, podrás:
+- Crear una cuenta o iniciar sesión
+- Ver tus datos sincronizados en cualquier dispositivo
+- Trabajar offline y sincronizar al reconectar
+
 ## 🎯 Próximos Pasos
 
 ### Fase 2 - Importante (Próximamente)
@@ -121,7 +142,7 @@ const { paginatedData } = usePagination(transactions, 20);
 - [ ] Búsqueda global funcional
 - [ ] Vista Kanban en CRM
 - [ ] Modo oscuro
-- [ ] Backup en la nube
+- [x] ~~Backup en la nube~~ (Completado)
 
 ### Fase 3 - Mejoras
 - [ ] Atajos de teclado
@@ -268,6 +289,14 @@ downloadFile(blob, 'export.csv');
 - Revisa que no haya loops infinitos en useEffect
 
 ## 📝 Changelog
+
+### v1.1.0 - Enero 2026 (Sincronización)
+- ✅ Sincronización en la nube con Firebase
+- ✅ Autenticación de usuarios (registro/login)
+- ✅ Acceso multi-dispositivo
+- ✅ Modo offline con sincronización automática
+- ✅ Indicadores de estado de sincronización
+- ✅ Menú de usuario mejorado
 
 ### v1.0.0 - Enero 2026 (FASE 1)
 - ✅ Modularización completa del código
