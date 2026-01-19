@@ -8,9 +8,9 @@ import {
   collection,
   query,
   where,
-  getDocs,
   collectionGroup,
-  deleteDoc
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './config';
 
