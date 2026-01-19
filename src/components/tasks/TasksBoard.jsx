@@ -254,14 +254,32 @@ export default function TasksBoard({ tasks, onTasksChange, userId, isAuthenticat
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-        {STATUS_OPTIONS.map((statusOption) => (
+        {STATUS_OPTIONS.map((statusOption) => {
+          const tasksForStatus = tasksByStatus[statusOption.value] || [];
+          return (
           <div key={statusOption.value} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-[#2a1d89]">{statusOption.label}</h3>
-              <span className="text-xs text-[#b7bac3]">{tasksByStatus[statusOption.value]?.length || 0}</span>
+              <span className="text-xs text-[#b7bac3]">{tasksForStatus.length}</span>
             </div>
             <div className="space-y-3">
-              {(tasksByStatus[statusOption.value] || []).map((task) => (
+              {tasksForStatus.length === 0 && (
+                <div className="border border-gray-100 rounded-xl p-4 bg-[#f8f9fc] text-center">
+                  <p className="text-sm font-semibold text-[#2a1d89]">Sin tareas</p>
+                  <p className="text-xs text-[#b7bac3] mt-1">
+                    Aquí aparecerán las tareas de este estado.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setStatus(statusOption.value)}
+                    className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-[#4f67eb] hover:text-[#2a1d89]"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Crea una nueva tarea
+                  </button>
+                </div>
+              )}
+              {tasksForStatus.map((task) => (
                 <div key={task.id} className="border border-gray-100 rounded-xl p-4 bg-[#f8f9fc]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -340,7 +358,8 @@ export default function TasksBoard({ tasks, onTasksChange, userId, isAuthenticat
               ))}
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
     </div>
   );
