@@ -2,15 +2,23 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
-// Configuración de Firebase - El usuario debe crear su proyecto en Firebase Console
-// y reemplazar estas credenciales con las suyas
+const env = import.meta.env;
+const requiredKeys = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID'
+];
+const hasFirebaseConfig = requiredKeys.every((key) => Boolean(env[key]));
+
+// Configuración de Firebase - se llena desde variables de entorno
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "demo-api-key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "demo-project.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "demo-project",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "demo-project.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789:web:abc123"
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID
 };
 
 // Inicializar Firebase
@@ -18,25 +26,26 @@ let app;
 let db;
 let auth;
 
-try {
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
+if (hasFirebaseConfig) {
+  try {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    auth = getAuth(app);
 
-  // Habilitar persistencia offline para que funcione sin conexión
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Persistencia offline no disponible: múltiples pestañas abiertas');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Persistencia offline no soportada por este navegador');
-    }
-  });
-} catch (error) {
-  console.error('Error inicializando Firebase:', error);
+    // Habilitar persistencia offline para que funcione sin conexión
+    enableIndexedDbPersistence(db).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Persistencia offline no disponible: múltiples pestañas abiertas');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Persistencia offline no soportada por este navegador');
+      }
+    });
+  } catch (error) {
+    console.error('Error inicializando Firebase:', error);
+  }
+} else {
+  console.warn('Firebase no está configurado. Agrega las variables VITE_FIREBASE_* en tu entorno.');
 }
 
 export { app, db, auth };
-export const isFirebaseConfigured = () => {
-  return import.meta.env.VITE_FIREBASE_API_KEY &&
-         import.meta.env.VITE_FIREBASE_API_KEY !== "demo-api-key";
-};
+export const isFirebaseConfigured = () => hasFirebaseConfig;
