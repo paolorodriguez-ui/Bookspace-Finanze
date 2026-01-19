@@ -79,6 +79,7 @@ export default function BookspaceERP() {
   const toastTimerRef = useRef(null);
   const toastStartRef = useRef(null);
   const toastRemainingRef = useRef(0);
+  const searchInputRef = useRef(null);
 
   // Datos
   const [tx, setTx] = useState([]);
