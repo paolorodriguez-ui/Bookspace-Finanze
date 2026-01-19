@@ -1146,7 +1146,10 @@ export default function BookspaceERP() {
             <button
               key={item.id}
               onClick={() => handleNav(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              aria-label={item.label}
+              title={item.label}
+              aria-current={tab === item.id ? 'page' : undefined}
+              className={`w-full relative group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 tab === item.id 
                   ? 'bg-[#4f67eb] text-white shadow-md shadow-[#4f67eb]/20' 
                   : 'text-[#2a1d89] hover:bg-[#4f67eb]/5'
@@ -1154,6 +1157,11 @@ export default function BookspaceERP() {
             >
               <item.icon className="w-5 h-5" />
               {sidebarOpen && <span>{item.label}</span>}
+              {!sidebarOpen && (
+                <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#2a1d89] px-2 py-1 text-xs text-white opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                  {item.label}
+                </span>
+              )}
             </button>
           ))}
         </nav>
