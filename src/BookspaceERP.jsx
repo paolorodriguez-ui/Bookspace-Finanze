@@ -98,6 +98,12 @@ export default function BookspaceERP() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
   // Guardar datos
   useEffect(() => {
     if (loading) return;
@@ -124,6 +130,13 @@ export default function BookspaceERP() {
   const notify = (text, type = 'success') => {
     setMsg({ text, type });
     setTimeout(() => setMsg(null), 2500);
+  };
+
+  const handleNav = (id) => {
+    setTab(id);
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   };
 
   // ========== FILTRO DE TRANSACCIONES ==========
@@ -349,6 +362,7 @@ export default function BookspaceERP() {
       tipo: 'Ingreso',
       cat: '',
       concepto: '',
+      notas: '',
       caja: 'Efectivo',
       monto: ''
     };
@@ -589,8 +603,8 @@ export default function BookspaceERP() {
   }, [mes, año]);
 
   const exportarTransacciones = (formato = 'csv') => {
-    exportarArchivo(txFiltradas, 'Transacciones', ['Fecha', 'Tipo', 'Categoría', 'Concepto', 'Caja', 'Monto'],
-      t => [t.fecha, t.tipo, t.cat || '', t.concepto || '', t.caja, Number(t.monto) || 0], formato);
+    exportarArchivo(txFiltradas, 'Transacciones', ['Fecha', 'Tipo', 'Categoría', 'Concepto', 'Notas', 'Caja', 'Monto'],
+      t => [t.fecha, t.tipo, t.cat || '', t.concepto || '', t.notas || '', t.caja, Number(t.monto) || 0], formato);
   };
 
   const exportarFacturas = (formato = 'csv') => {
@@ -768,7 +782,7 @@ export default function BookspaceERP() {
       )}
 
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-100 flex flex-col transition-all duration-300 fixed h-full z-30`}>
+      <aside className={`bg-white border-r border-gray-100 flex flex-col transition-all duration-300 fixed h-full z-30 w-64 ${sidebarOpen ? 'translate-x-0 md:w-64' : '-translate-x-full md:w-20'} md:translate-x-0`}>
         {/* Logo */}
         <div className="p-4 border-b border-gray-100 flex items-center gap-3">
           <BookspaceLogo size={40} />
@@ -780,7 +794,7 @@ export default function BookspaceERP() {
           {navItems.map(item => (
             <button
               key={item.id}
-              onClick={() => setTab(item.id)}
+              onClick={() => handleNav(item.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 tab === item.id 
                   ? 'bg-[#4f67eb] text-white shadow-md shadow-[#4f67eb]/20' 
@@ -804,12 +818,29 @@ export default function BookspaceERP() {
         </div>
       </aside>
 
+      {sidebarOpen && (
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/30 z-20 md:hidden"
+          aria-label="Cerrar menú"
+        />
+      )}
+
       {/* Main Content */}
-      <div className={`flex-1 ${sidebarOpen ? 'ml-64' : 'ml-20'} transition-all duration-300`}>
+      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-20'}`}>
         {/* Header */}
         <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
-          <div className="flex justify-between items-center px-6 py-4">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 px-4 md:px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden p-2 rounded-xl border border-gray-100 text-[#2a1d89] hover:bg-[#f8f9fc]"
+                aria-label="Abrir menú"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
               <div>
                 <h1 className="text-xl font-bold text-[#2a1d89]">{navItems.find(n => n.id === tab)?.label}</h1>
                 <p className="text-sm text-[#b7bac3]">
@@ -818,9 +849,9 @@ export default function BookspaceERP() {
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col md:flex-row md:items-center gap-4 w-full md:w-auto">
               {/* Period Filter */}
-              <div className="flex items-center gap-2 bg-[#f8f9fc] px-3 py-2 rounded-xl">
+              <div className="flex flex-wrap items-center gap-2 bg-[#f8f9fc] px-3 py-2 rounded-xl">
                 <CalendarDays className="w-4 h-4 text-[#4f67eb]" />
                 <select 
                   value={año} 
@@ -840,12 +871,12 @@ export default function BookspaceERP() {
               </div>
 
               {/* Search */}
-              <div className="relative">
+              <div className="relative w-full md:w-auto">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#b7bac3]" />
                 <input
                   type="text"
                   placeholder="Buscar"
-                  className="bg-[#f8f9fc] border-none rounded-xl pl-10 pr-4 py-2.5 text-sm w-48 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none"
+                  className="bg-[#f8f9fc] border-none rounded-xl pl-10 pr-4 py-2.5 text-sm w-full md:w-48 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#b7bac3] bg-white px-1.5 py-0.5 rounded">⌘K</span>
               </div>
@@ -869,7 +900,7 @@ export default function BookspaceERP() {
         </header>
 
         {/* Page Content */}
-        <main className="p-6">
+        <main className="p-4 md:p-6">
           
           {/* ===== DASHBOARD ===== */}
           {tab === 'dashboard' && (
@@ -1174,13 +1205,50 @@ export default function BookspaceERP() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <StatCard title="Ingresos" value={fmt(totales.ing)} color="success" />
                 <StatCard title="Egresos" value={fmt(totales.egr)} color="danger" />
                 <StatCard title="Balance" value={fmt(totales.balance)} color={totales.balance >= 0 ? 'primary' : 'danger'} />
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+              <div className="space-y-4 md:hidden">
+                {txFiltradas.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center text-[#b7bac3]">
+                    No hay registros en este periodo
+                  </div>
+                ) : (
+                  txFiltradas.map(t => (
+                    <div key={t.id} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-4">
+                      <div className="flex flex-wrap gap-3">
+                        <input type="date" value={t.fecha} onChange={e => actualizarTx(t.id, 'fecha', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                        <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} className={`border rounded-lg px-2 py-1.5 font-medium w-full ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                          <option>Ingreso</option>
+                          <option>Egreso</option>
+                        </select>
+                        <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                          <option value="">Categoría</option>
+                          {(t.tipo === 'Ingreso' ? CAT_ING : CAT_EGR).map(c => <option key={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} placeholder="Concepto" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                      <textarea value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} placeholder="Notas" rows={2} className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none resize-none" />
+                      <div className="flex flex-wrap gap-3">
+                        <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                          {CAJAS.map(c => <option key={c}>{c}</option>)}
+                        </select>
+                        <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                      </div>
+                      <div className="flex justify-end">
+                        <button onClick={() => eliminarTx(t.id)} className="inline-flex items-center gap-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 className="w-4 h-4" />Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hidden md:block">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -1189,6 +1257,7 @@ export default function BookspaceERP() {
                         <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Tipo</th>
                         <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Categoría</th>
                         <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Concepto</th>
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Notas</th>
                         <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Caja</th>
                         <th className="px-4 py-4 text-right font-semibold text-[#2a1d89]">Monto</th>
                         <th className="px-4 py-4 w-12"></th>
@@ -1196,7 +1265,7 @@ export default function BookspaceERP() {
                     </thead>
                     <tbody>
                       {txFiltradas.length === 0 ? (
-                        <tr><td colSpan={7} className="px-4 py-16 text-center text-[#b7bac3]">No hay registros en este periodo</td></tr>
+                        <tr><td colSpan={8} className="px-4 py-16 text-center text-[#b7bac3]">No hay registros en este periodo</td></tr>
                       ) : (
                         txFiltradas.map(t => (
                           <tr key={t.id} className="border-b border-gray-50 hover:bg-[#f8f9fc]/50 transition">
@@ -1217,6 +1286,9 @@ export default function BookspaceERP() {
                             </td>
                             <td className="px-4 py-3">
                               <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} placeholder="Descripción" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[140px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input type="text" value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} placeholder="Notas" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[160px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
                             </td>
                             <td className="px-4 py-3">
                               <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
