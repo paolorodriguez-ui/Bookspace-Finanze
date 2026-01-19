@@ -56,6 +56,8 @@ export default function TasksBoard({ tasks, onTasksChange, userId, isAuthenticat
   const [priority, setPriority] = useState('media');
   const [dueDate, setDueDate] = useState('');
   const [assigneesSelected, setAssigneesSelected] = useState([]);
+  const [assigneesInput, setAssigneesInput] = useState('');
+  const [assigneeDrafts, setAssigneeDrafts] = useState({});
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [savingTasks, setSavingTasks] = useState({});
@@ -204,6 +206,16 @@ export default function TasksBoard({ tasks, onTasksChange, userId, isAuthenticat
     const task = tasks.find((item) => item.id === taskId);
     const assignees = (task.assignees || []).filter((value) => value !== assignee);
     updateTask(taskId, { assignees });
+  };
+
+  const handleAddAssignee = (taskId) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const draft = (assigneeDrafts[taskId] || '').trim();
+    if (!draft) return;
+    setAssigneeDrafts((prev) => ({ ...prev, [taskId]: '' }));
+    const currentAssignees = task.assignees || [];
+    updateTask(taskId, { assignees: uniqueValues([...currentAssignees, draft]) });
   };
 
   return (
