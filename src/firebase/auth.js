@@ -13,11 +13,19 @@ import { auth } from './config';
  */
 export const registerUser = async (email, password, displayName) => {
   try {
+    console.log('Intentando registrar usuario:', email);
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    console.log('Usuario creado exitosamente:', userCredential.user.uid);
 
-    // Actualizar el nombre de usuario
+    // Actualizar el nombre de usuario (no crítico si falla)
     if (displayName) {
-      await updateProfile(userCredential.user, { displayName });
+      try {
+        await updateProfile(userCredential.user, { displayName });
+        console.log('Perfil actualizado con nombre:', displayName);
+      } catch (profileError) {
+        console.warn('No se pudo actualizar el nombre de perfil:', profileError.message);
+        // No fallamos el registro si solo falla el nombre
+      }
     }
 
     return {
@@ -26,6 +34,7 @@ export const registerUser = async (email, password, displayName) => {
       message: 'Cuenta creada exitosamente'
     };
   } catch (error) {
+    console.error('Error en registro:', error.code, error.message);
     return {
       success: false,
       error: getAuthErrorMessage(error.code)
@@ -38,13 +47,16 @@ export const registerUser = async (email, password, displayName) => {
  */
 export const loginUser = async (email, password) => {
   try {
+    console.log('Intentando iniciar sesión:', email);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    console.log('Sesión iniciada exitosamente:', userCredential.user.uid);
     return {
       success: true,
       user: userCredential.user,
       message: 'Sesión iniciada'
     };
   } catch (error) {
+    console.error('Error en login:', error.code, error.message);
     return {
       success: false,
       error: getAuthErrorMessage(error.code)
@@ -101,17 +113,49 @@ export const getCurrentUser = () => {
  */
 const getAuthErrorMessage = (errorCode) => {
   const errorMessages = {
-    'auth/email-already-in-use': 'Este email ya está registrado',
+    // Errores de registro
+    'auth/email-already-in-use': 'Este email ya está registrado. Intenta iniciar sesión.',
     'auth/invalid-email': 'Email inválido',
-    'auth/operation-not-allowed': 'Operación no permitida',
+    'auth/operation-not-allowed': 'Operación no permitida. Verifica la configuración de Firebase.',
     'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres',
+
+    // Errores de login
     'auth/user-disabled': 'Esta cuenta ha sido deshabilitada',
     'auth/user-not-found': 'No existe una cuenta con este email',
     'auth/wrong-password': 'Contraseña incorrecta',
-    'auth/invalid-credential': 'Credenciales inválidas',
+    'auth/invalid-credential': 'Email o contraseña incorrectos',
+    'auth/invalid-login-credentials': 'Email o contraseña incorrectos',
+
+    // Errores de límite
     'auth/too-many-requests': 'Demasiados intentos. Intenta más tarde',
-    'auth/network-request-failed': 'Error de conexión. Verifica tu internet'
+
+    // Errores de red/conexión
+    'auth/network-request-failed': 'Error de conexión. Verifica tu internet',
+    'auth/internal-error': 'Error interno. Intenta de nuevo.',
+    'auth/timeout': 'La solicitud tardó demasiado. Intenta de nuevo.',
+
+    // Errores de configuración
+    'auth/configuration-not-found': 'Firebase no está configurado correctamente',
+    'auth/invalid-api-key': 'La API key de Firebase es inválida',
+    'auth/app-not-authorized': 'La app no está autorizada para usar Firebase Auth',
+    'auth/unauthorized-domain': 'Este dominio no está autorizado en Firebase',
+
+    // Errores de sesión
+    'auth/requires-recent-login': 'Por seguridad, inicia sesión de nuevo',
+    'auth/user-token-expired': 'Tu sesión expiró. Inicia sesión de nuevo.',
+
+    // Otros errores comunes
+    'auth/missing-email': 'El email es requerido',
+    'auth/missing-password': 'La contraseña es requerida',
+    'auth/popup-closed-by-user': 'La ventana de autenticación fue cerrada',
+    'auth/cancelled-popup-request': 'Solicitud cancelada'
   };
 
-  return errorMessages[errorCode] || 'Error de autenticación';
+  if (errorMessages[errorCode]) {
+    return errorMessages[errorCode];
+  }
+
+  // Log para debugging de errores desconocidos
+  console.warn('Firebase Auth - Código de error no mapeado:', errorCode);
+  return `Error de autenticación (${errorCode || 'desconocido'})`;
 };
