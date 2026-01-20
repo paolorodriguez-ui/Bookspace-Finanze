@@ -30,6 +30,7 @@ Esta guia te ayudara a configurar Firebase para habilitar la sincronizacion de d
 3. Selecciona "Comenzar en modo de produccion"
 4. Elige una ubicacion cercana a ti (ej: nam5 para America)
 5. Haz clic en "Habilitar"
+6. Los datos se guardan en `/users/{uid}` y en subcolecciones dentro de cada usuario (por ejemplo: `transactions`, `clients`, `providers`, etc.).
 
 ## Paso 5: Configurar Reglas de Seguridad
 
@@ -51,6 +52,11 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Subcolecciones de datos por usuario (transactions/clients/providers/etc.)
+    match /users/{userId}/{subcollection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Tareas por usuario: el owner o miembros en sharedWith pueden leer/escribir
     match /users/{userId}/tasks/{taskId} {
       allow read, write: if request.auth != null
@@ -70,6 +76,8 @@ service cloud.firestore {
 ```
 
 3. Haz clic en "Publicar"
+
+> Nota: `users_data` es un esquema legado y solo se usa para procesos de migración.
 
 ## Paso 6: Configurar Variables de Entorno
 
