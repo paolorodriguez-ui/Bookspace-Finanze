@@ -109,30 +109,8 @@ const writeCollectionItems = async (userId, collectionName, items = []) => {
     batches.push(batch);
   }
 
-  const snapshot = await getDocs(query(collectionRef, where('ownerId', '==', userId)));
-  const docsToDelete = snapshot.docs.filter((docSnap) => {
-    const data = docSnap.data();
-    const storedId = data?.id ?? docSnap.id;
-    return !itemIds.has(storedId);
-  });
-
-  batch = writeBatch(db);
-  operationCount = 0;
-
-  docsToDelete.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-    operationCount += 1;
-
-    if (operationCount === chunkSize) {
-      batches.push(batch);
-      batch = writeBatch(db);
-      operationCount = 0;
-    }
-  });
-
-  if (operationCount > 0) {
-    batches.push(batch);
-  }
+  // ELIMINADO: Lógica de borrado de documentos no presentes (causaba perdida de datos en concurrencia)
+  // Ahora usamos "Soft Deletes" (deleted: true)
 
   if (batches.length > 0) {
     await commitBatchWrites(batches);
@@ -344,7 +322,7 @@ export const loadUserDataFromCloud = async (userId) => {
  */
 export const subscribeToUserData = (userId, callback) => {
   if (!isFirebaseConfigured()) {
-    return () => {};
+    return () => { };
   }
 
   const currentData = createEmptyUserData();
@@ -419,7 +397,7 @@ export const loadTasksFromCloud = async (userId) => {
  */
 export const subscribeToTasks = (userId, callback) => {
   if (!isFirebaseConfigured()) {
-    return () => {};
+    return () => { };
   }
 
   const tasksQuery = query(
@@ -581,6 +559,10 @@ const mergeData = (localData, cloudData) => {
           // Mantener el más reciente basado en updatedAt o fecha
           const localTime = normalizeUpdatedAt(existing.updatedAt) || normalizeUpdatedAt(existing.fecha);
           const cloudTime = normalizeUpdatedAt(item.updatedAt) || normalizeUpdatedAt(item.fecha);
+
+          // Si el cloud tiene deleted: true y es mas reciente, se respeta
+          // Si el local tiene deleted: true y es mas reciente, se respeta
+
           if (cloudTime > localTime) {
             merged.set(item.id, item);
           }

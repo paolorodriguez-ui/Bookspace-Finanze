@@ -72,6 +72,8 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
 
         const localTime = existing.updatedAt || existing.fecha || 0;
         const cloudTime = item.updatedAt || item.fecha || 0;
+
+        // Respetar el timestamp más reciente, incluso para soft deletes
         if (cloudTime > localTime) {
           merged.set(item.id, item);
         }
