@@ -51,6 +51,11 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
+    // Subcolecciones privadas del usuario (transactions, clients, providers, employees, leads, invoices, meetings)
+    match /users/{userId}/{subcollection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Tareas por usuario: el owner o miembros en sharedWith pueden leer/escribir
     match /users/{userId}/tasks/{taskId} {
       allow read, write: if request.auth != null

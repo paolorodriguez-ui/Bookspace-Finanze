@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { Plus, Trash2, Download, CheckCircle, Users, Receipt, Settings, X, BarChart3, Scale, ArrowUpRight, ArrowDownRight, Wallet, Building, CreditCard, PiggyBank, Search, Target, UserPlus, FileText, Printer, TrendingUp, DollarSign, User, Calendar, Clock, Filter, PieChart, Activity, AlertTriangle, CalendarDays, FileSpreadsheet, Home, Bell, ChevronDown, MoreHorizontal, Eye, Edit, Menu, Database, Cloud, RefreshCw, ListChecks } from 'lucide-react';
 
 // Auth & Sync
@@ -6,8 +6,6 @@ import { useAuth, useCloudSync, SYNC_STATUS, useActivityLog, useUsers } from './
 import { AuthModal, SyncIndicator } from './components/auth';
 import { UserMenu } from './components/layout';
 import { ActivityLog, ActivityWidget } from './components/ActivityLog';
-import TasksBoard from './components/tasks/TasksBoard';
-import MeetingsCalendar from './components/calendar/MeetingsCalendar';
 
 // ========== CONSTANTES ==========
 const CAT_ING = ['Comisiones', 'Premium', 'Premium +', 'Silver', 'Gold', 'Capital', 'Préstamo', 'Otro'];
@@ -37,8 +35,12 @@ const EST_FACT = [
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MESES_COMPLETOS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0);
+const currencyFormatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+const fmt = (n) => currencyFormatter.format(n || 0);
 const getUpdatedAt = () => Date.now();
+
+const TasksBoard = React.lazy(() => import('./components/tasks/TasksBoard'));
+const MeetingsCalendar = React.lazy(() => import('./components/calendar/MeetingsCalendar'));
 
 // Bookspace Logo Component
 const BookspaceLogo = ({ size = 40 }) => (
@@ -127,6 +129,18 @@ export default function BookspaceERP() {
     config: cfg
   }), [tx, cli, prov, emp, leads, fact, juntas, cfg]);
 
+  const serializedData = useMemo(() => ({
+    tx: JSON.stringify(tx),
+    cli: JSON.stringify(cli),
+    prov: JSON.stringify(prov),
+    emp: JSON.stringify(emp),
+    leads: JSON.stringify(leads),
+    fact: JSON.stringify(fact),
+    juntas: JSON.stringify(juntas),
+    tasks: JSON.stringify(tasks),
+    cfg: JSON.stringify(cfg)
+  }), [tx, cli, prov, emp, leads, fact, juntas, tasks, cfg]);
+
   // Callback para actualizar datos desde la nube
   const handleCloudDataUpdate = useCallback((cloudData) => {
     if (cloudData.transactions) setTx(cloudData.transactions);
@@ -175,17 +189,23 @@ export default function BookspaceERP() {
       try {
         const keys = ['bs12-tx', 'bs12-cli', 'bs12-prov', 'bs12-emp', 'bs12-leads', 'bs12-fact', 'bs12-juntas', 'bs12-tasks', 'bs12-cfg'];
         const setters = [setTx, setCli, setProv, setEmp, setLeads, setFact, setJuntas, setTasks, setCfg];
-        
-        for (let i = 0; i < keys.length; i++) {
-          try {
-            const result = await window.storage.get(keys[i]);
-            if (result && result.value) {
-              setters[i](JSON.parse(result.value));
+
+        const results = await Promise.all(
+          keys.map(async (key) => {
+            try {
+              return await window.storage.get(key);
+            } catch (e) {
+              console.log('Error loading', key);
+              return null;
             }
-          } catch (e) {
-            console.log('Error loading', keys[i]);
+          })
+        );
+
+        results.forEach((result, index) => {
+          if (result && result.value) {
+            setters[index](JSON.parse(result.value));
           }
-        }
+        });
       } catch (e) {
         console.log('Storage error');
       }
@@ -220,15 +240,17 @@ export default function BookspaceERP() {
     const saveData = async () => {
       try {
         // Guardar localmente
-        await window.storage.set('bs12-tx', JSON.stringify(tx));
-        await window.storage.set('bs12-cli', JSON.stringify(cli));
-        await window.storage.set('bs12-prov', JSON.stringify(prov));
-        await window.storage.set('bs12-emp', JSON.stringify(emp));
-        await window.storage.set('bs12-leads', JSON.stringify(leads));
-        await window.storage.set('bs12-fact', JSON.stringify(fact));
-        await window.storage.set('bs12-juntas', JSON.stringify(juntas));
-        await window.storage.set('bs12-tasks', JSON.stringify(tasks));
-        await window.storage.set('bs12-cfg', JSON.stringify(cfg));
+        await Promise.all([
+          window.storage.set('bs12-tx', serializedData.tx),
+          window.storage.set('bs12-cli', serializedData.cli),
+          window.storage.set('bs12-prov', serializedData.prov),
+          window.storage.set('bs12-emp', serializedData.emp),
+          window.storage.set('bs12-leads', serializedData.leads),
+          window.storage.set('bs12-fact', serializedData.fact),
+          window.storage.set('bs12-juntas', serializedData.juntas),
+          window.storage.set('bs12-tasks', serializedData.tasks),
+          window.storage.set('bs12-cfg', serializedData.cfg)
+        ]);
 
         // Sincronizar con la nube si está habilitado
         if (syncEnabled && isAuthenticated) {
@@ -241,7 +263,7 @@ export default function BookspaceERP() {
 
     const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
-  }, [tx, cli, prov, emp, leads, fact, juntas, tasks, cfg, loading, syncEnabled, isAuthenticated, allData, saveToCloudDebounced]);
+  }, [serializedData, loading, syncEnabled, isAuthenticated, allData, saveToCloudDebounced]);
 
   // Sincronizar cuando el usuario inicie sesión
   useEffect(() => {
@@ -1827,23 +1849,27 @@ export default function BookspaceERP() {
                   <Plus className="w-4 h-4" />Nueva Junta
                 </button>
               </div>
-              <MeetingsCalendar
-                meetings={juntas}
-                leads={leads}
-                onSelectMeeting={(meeting) => abrirModal('junta', meeting)}
-              />
+              <Suspense fallback={<div className="flex items-center justify-center py-12 text-sm text-[#b7bac3]">Cargando calendario...</div>}>
+                <MeetingsCalendar
+                  meetings={juntas}
+                  leads={leads}
+                  onSelectMeeting={(meeting) => abrirModal('junta', meeting)}
+                />
+              </Suspense>
             </div>
           )}
 
           {/* ===== TASKS ===== */}
           {tab === 'tasks' && (
-            <TasksBoard
-              tasks={tasks}
-              onTasksChange={setTasks}
-              userId={user?.uid}
-              isAuthenticated={isAuthenticated}
-              users={teamUsers}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center py-12 text-sm text-[#b7bac3]">Cargando tareas...</div>}>
+              <TasksBoard
+                tasks={tasks}
+                onTasksChange={setTasks}
+                userId={user?.uid}
+                isAuthenticated={isAuthenticated}
+                users={teamUsers}
+              />
+            </Suspense>
           )}
 
           {/* ===== FACTURAS ===== */}

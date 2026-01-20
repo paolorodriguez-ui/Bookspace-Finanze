@@ -33,6 +33,25 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
 
   // Verificar si Firebase está configurado
   const isEnabled = isFirebaseConfigured() && !!userId;
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+  const isNetworkError = useCallback((err) => {
+    if (!err) return false;
+    const code = err.code || err.name;
+    const message = String(err.message || '').toLowerCase();
+    return (
+      code === 'unavailable' ||
+      code === 'network-request-failed' ||
+      message.includes('offline') ||
+      message.includes('network') ||
+      message.includes('failed to get document because the client is offline')
+    );
+  }, []);
+
+  const markOffline = useCallback(() => {
+    setSyncStatus(SYNC_STATUS.OFFLINE);
+    setError('Sin conexión');
+  }, []);
 
   const mergeEntityArrays = useCallback((local = [], cloud = []) => {
     const merged = new Map();
@@ -82,6 +101,10 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
   // Cargar datos iniciales de la nube
   const loadFromCloud = useCallback(async () => {
     if (!isEnabled) return null;
+    if (isOffline) {
+      markOffline();
+      return null;
+    }
 
     setSyncStatus(SYNC_STATUS.SYNCING);
     setError(null);
@@ -108,15 +131,23 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
       setSyncStatus(SYNC_STATUS.SYNCED);
       return null;
     } catch (err) {
+      if (isNetworkError(err)) {
+        markOffline();
+        return null;
+      }
       setSyncStatus(SYNC_STATUS.ERROR);
       setError(err.message);
       return null;
     }
-  }, [userId, isEnabled]);
+  }, [userId, isEnabled, isOffline, isNetworkError, markOffline]);
 
   // Guardar datos en la nube
   const saveToCloud = useCallback(async (data) => {
     if (!isEnabled) return false;
+    if (isOffline) {
+      markOffline();
+      return false;
+    }
 
     setSyncStatus(SYNC_STATUS.SYNCING);
     setError(null);
@@ -133,11 +164,15 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
 
       throw new Error(result.error || 'Error al guardar');
     } catch (err) {
+      if (isNetworkError(err)) {
+        markOffline();
+        return false;
+      }
       setSyncStatus(SYNC_STATUS.ERROR);
       setError(err.message);
       return false;
     }
-  }, [userId, isEnabled]);
+  }, [userId, isEnabled, isOffline, isNetworkError, markOffline]);
 
   // Guardar con debounce
   const saveToCloudDebounced = useCallback((data) => {
@@ -153,6 +188,10 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
   // Sincronizar datos (merge inteligente)
   const syncWithCloud = useCallback(async () => {
     if (!isEnabled || !localData) return;
+    if (isOffline) {
+      markOffline();
+      return;
+    }
 
     setSyncStatus(SYNC_STATUS.SYNCING);
     setError(null);
@@ -175,10 +214,14 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
         throw new Error(result.error || 'Error de sincronización');
       }
     } catch (err) {
+      if (isNetworkError(err)) {
+        markOffline();
+        return;
+      }
       setSyncStatus(SYNC_STATUS.ERROR);
       setError(err.message);
     }
-  }, [userId, localData, onDataUpdate, isEnabled]);
+  }, [userId, localData, onDataUpdate, isEnabled, isOffline, isNetworkError, markOffline]);
 
   // Suscribirse a cambios en tiempo real
   useEffect(() => {
