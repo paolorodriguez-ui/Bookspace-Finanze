@@ -16,7 +16,7 @@ export const loadUsersFromCloud = async () => {
   }
 
   try {
-    const snapshot = await getDocs(collection(db, 'users'));
+    const snapshot = await getDocs(collection(db, 'profiles'));
     return { success: true, data: snapshot.docs.map(mapUserDoc) };
   } catch (error) {
     console.error('Error cargando usuarios de la nube:', error);
@@ -30,7 +30,7 @@ export const subscribeToUsers = (callback) => {
     return () => {};
   }
 
-  const usersRef = collection(db, 'users');
+  const usersRef = collection(db, 'profiles');
   return onSnapshot(usersRef, (snapshot) => {
     callback(snapshot.docs.map(mapUserDoc));
   }, (error) => {

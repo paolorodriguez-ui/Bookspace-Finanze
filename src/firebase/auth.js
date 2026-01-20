@@ -11,7 +11,7 @@ import { auth, db, isFirebaseConfigured } from './config';
 
 const upsertUserProfile = async ({ uid, displayName, email }) => {
   if (!db) return;
-  const userRef = doc(db, 'users', uid);
+  const userRef = doc(db, 'profiles', uid);
   await setDoc(userRef, {
     displayName: displayName || '',
     email: email || '',

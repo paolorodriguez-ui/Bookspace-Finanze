@@ -34,41 +34,59 @@ Esta guia te ayudara a configurar Firebase para habilitar la sincronizacion de d
 ## Paso 5: Configurar Reglas de Seguridad
 
 1. En Firestore, ve a la pestana "Reglas"
-2. Reemplaza las reglas con las siguientes:
+2. Reemplaza las reglas con las siguientes (esquema compartido con colecciones globales):
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Los usuarios solo pueden leer/escribir sus propios datos
-    match /users_data/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
     // Perfiles públicos de usuarios
-    match /users/{userId} {
+    match /profiles/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Subcolecciones privadas del usuario (transactions, clients, providers, employees, leads, invoices, meetings)
-    match /users/{userId}/{subcollection}/{docId} {
+    // Configuración privada del usuario
+    match /user_configs/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Tareas por usuario: el owner o miembros en sharedWith pueden leer/escribir
-    match /users/{userId}/tasks/{taskId} {
-      allow read, write: if request.auth != null
-        && (request.auth.uid == userId
-        || request.auth.uid in resource.data.sharedWith
-        || request.auth.uid in request.resource.data.sharedWith);
+    // Colecciones compartidas (transactions, clients, providers, employees, leads, invoices, meetings)
+    match /transactions/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /clients/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /providers/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /employees/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /leads/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /invoices/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /meetings/{docId} {
+      allow read, write: if request.auth != null;
     }
 
-    // Tareas compartidas por workspace (opcional)
-    match /workspaces/{workspaceId}/tasks/{taskId} {
+    // Tareas compartidas (owner o miembros en sharedWith pueden leer/escribir)
+    match /tasks/{taskId} {
       allow read, write: if request.auth != null
         && (request.auth.uid in resource.data.sharedWith
         || request.auth.uid in request.resource.data.sharedWith);
+    }
+
+    // Colecciones legacy (solo durante migración)
+    match /users_data/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/{subcollection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
@@ -126,3 +144,14 @@ El plan gratuito de Firebase (Spark) incluye:
 - 1 GB de almacenamiento
 
 Esto es más que suficiente para uso personal y pequeños negocios.
+
+## Migración desde `/users/{uid}/...` a colecciones compartidas
+
+La app ahora usa colecciones globales (`/transactions`, `/clients`, `/providers`, etc.) con un campo `ownerId` para filtrar por usuario.
+Al iniciar sesión, se ejecuta una migración automática que copia los datos existentes desde:
+
+- `/users_data/{uid}` (legacy)
+- `/users/{uid}/{subcollection}`
+
+hacia las colecciones compartidas y marca la migración en `/user_configs/{uid}`. Si necesitas repetir la migración, elimina el campo
+`migratedToShared` en el documento `/user_configs/{uid}` y vuelve a iniciar sesión.
