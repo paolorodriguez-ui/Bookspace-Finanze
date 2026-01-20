@@ -813,14 +813,20 @@ export default function BookspaceERP() {
   const actualizarTx = (id, campo, valor) => {
     setTx(prev => prev.map(t => {
       if (t.id === id) {
-        const updated = { ...t, [campo]: valor, updatedAt: getUpdatedAt() };
-        if (campo === 'monto' || campo === 'concepto') {
-          logTransaction('update', updated);
-        }
-        return updated;
+        // ACTUALIZACIÓN VISUAL: Solo actualizamos el estado, NO LOGUEAMOS AQUI
+        // El log se hará en el evento onBlur de los inputs
+        return { ...t, [campo]: valor, updatedAt: getUpdatedAt() };
       }
       return t;
     }));
+  };
+
+  // Nueva función para loguear cambios explícitos (usar en onBlur)
+  const logTxChange = (id, campo) => {
+    const transaction = tx.find(t => t.id === id);
+    if (transaction) {
+      logTransaction('update', transaction);
+    }
   };
 
   const eliminarTx = (id) => {
@@ -1995,22 +2001,22 @@ export default function BookspaceERP() {
                     <div key={t.id} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-4">
                       <div className="flex flex-wrap gap-3">
                         <input type="date" value={t.fecha} onChange={e => actualizarTx(t.id, 'fecha', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
-                        <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} className={`border rounded-lg px-2 py-1.5 font-medium w-full ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                        <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} onBlur={() => logTxChange(t.id, 'tipo')} className={`border rounded-lg px-2 py-1.5 font-medium w-full ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                           <option>Ingreso</option>
                           <option>Egreso</option>
                         </select>
-                        <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                        <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} onBlur={() => logTxChange(t.id, 'cat')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
                           <option value="">Categoría</option>
                           {(t.tipo === 'Ingreso' ? CAT_ING : CAT_EGR).map(c => <option key={c}>{c}</option>)}
                         </select>
                       </div>
-                      <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} placeholder="Concepto" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
-                      <textarea value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} placeholder="Notas" rows={2} className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none resize-none" />
+                      <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} onBlur={() => logTxChange(t.id, 'concepto')} placeholder="Concepto" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                      <textarea value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} onBlur={() => logTxChange(t.id, 'notas')} placeholder="Notas" rows={2} className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none resize-none" />
                       <div className="flex flex-wrap gap-3">
-                        <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                        <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} onBlur={() => logTxChange(t.id, 'caja')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
                           {CAJAS.map(c => <option key={c}>{c}</option>)}
                         </select>
-                        <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                        <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} onBlur={() => logTxChange(t.id, 'monto')} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
                       </div>
                       <div className="flex justify-end">
                         <button onClick={() => eliminarTx(t.id)} className="inline-flex items-center gap-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition">
@@ -2044,33 +2050,33 @@ export default function BookspaceERP() {
                         txFiltradas.map(t => (
                           <tr key={t.id} className="border-b border-gray-50 hover:bg-[#f8f9fc]/50 transition">
                             <td className="px-4 py-3">
-                              <input type="date" value={t.fecha} onChange={e => actualizarTx(t.id, 'fecha', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-32 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                              <input type="date" value={t.fecha} onChange={e => actualizarTx(t.id, 'fecha', e.target.value)} onBlur={() => logTxChange(t.id, 'fecha')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-32 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
                             </td>
                             <td className="px-4 py-3">
-                              <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} className={`border rounded-lg px-2 py-1.5 font-medium ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                              <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} onBlur={() => logTxChange(t.id, 'tipo')} className={`border rounded-lg px-2 py-1.5 font-medium ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                 <option>Ingreso</option>
                                 <option>Egreso</option>
                               </select>
                             </td>
                             <td className="px-4 py-3">
-                              <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                              <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} onBlur={() => logTxChange(t.id, 'cat')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
                                 <option value="">-</option>
                                 {(t.tipo === 'Ingreso' ? CAT_ING : CAT_EGR).map(c => <option key={c}>{c}</option>)}
                               </select>
                             </td>
                             <td className="px-4 py-3">
-                              <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} placeholder="Descripción" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[140px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                              <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} onBlur={() => logTxChange(t.id, 'concepto')} placeholder="Descripción" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[140px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
                             </td>
                             <td className="px-4 py-3">
-                              <input type="text" value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} placeholder="Notas" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[160px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                              <input type="text" value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} onBlur={() => logTxChange(t.id, 'notas')} placeholder="Notas" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[160px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
                             </td>
                             <td className="px-4 py-3">
-                              <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                              <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} onBlur={() => logTxChange(t.id, 'caja')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
                                 {CAJAS.map(c => <option key={c}>{c}</option>)}
                               </select>
                             </td>
                             <td className="px-4 py-3">
-                              <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                              <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} onBlur={() => logTxChange(t.id, 'monto')} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
                             </td>
                             <td className="px-4 py-3">
                               <button onClick={() => eliminarTx(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition">
