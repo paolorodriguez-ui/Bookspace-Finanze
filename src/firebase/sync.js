@@ -8,7 +8,6 @@ import {
   collection,
   query,
   where,
-  collectionGroup,
   deleteDoc,
   writeBatch
 } from 'firebase/firestore';
@@ -19,12 +18,14 @@ import { db, isFirebaseConfigured } from './config';
  */
 const COLLECTIONS = {
   USERS_DATA: 'users_data',
-  USERS: 'users',
+  LEGACY_USERS: 'users',
+  PROFILES: 'profiles',
+  USER_CONFIGS: 'user_configs',
   TASKS: 'tasks',
   WORKSPACES: 'workspaces'
 };
 
-const USER_SUBCOLLECTIONS = [
+const SHARED_DATA_COLLECTIONS = [
   'transactions',
   'clients',
   'providers',
@@ -45,13 +46,19 @@ const createEmptyUserData = () => ({
   config: {}
 });
 
-const getUserDocRef = (userId) => doc(db, COLLECTIONS.USERS, userId);
+const getUserConfigDocRef = (userId) => doc(db, COLLECTIONS.USER_CONFIGS, userId);
 
 const getLegacyUserDocRef = (userId) => doc(db, COLLECTIONS.USERS_DATA, userId);
 
-const getUserCollectionRef = (userId, collectionName) => (
-  collection(db, COLLECTIONS.USERS, userId, collectionName)
+const getLegacyUserRootRef = (userId) => doc(db, COLLECTIONS.LEGACY_USERS, userId);
+
+const getLegacyUserCollectionRef = (userId, collectionName) => (
+  collection(db, COLLECTIONS.LEGACY_USERS, userId, collectionName)
 );
+
+const getSharedCollectionRef = (collectionName) => collection(db, collectionName);
+
+const getSharedDocId = (userId, docId) => `${userId}_${docId}`;
 
 const getValidDocId = (item) => {
   if (!item) return null;
@@ -69,7 +76,7 @@ const commitBatchWrites = async (writes) => {
 const writeCollectionItems = async (userId, collectionName, items = []) => {
   const chunkSize = 400;
   const batches = [];
-  const collectionRef = getUserCollectionRef(userId, collectionName);
+  const collectionRef = getSharedCollectionRef(collectionName);
   const itemIds = new Set();
 
   let batch = writeBatch(db);
@@ -83,8 +90,12 @@ const writeCollectionItems = async (userId, collectionName, items = []) => {
     }
 
     itemIds.add(docId);
-    const docRef = doc(collectionRef, docId);
-    batch.set(docRef, { ...item, id: docId }, { merge: true });
+    const docRef = doc(collectionRef, getSharedDocId(userId, docId));
+    batch.set(docRef, {
+      ...item,
+      id: docId,
+      ownerId: userId
+    }, { merge: true });
     operationCount += 1;
 
     if (operationCount === chunkSize) {
@@ -98,8 +109,12 @@ const writeCollectionItems = async (userId, collectionName, items = []) => {
     batches.push(batch);
   }
 
-  const snapshot = await getDocs(query(collectionRef));
-  const docsToDelete = snapshot.docs.filter((docSnap) => !itemIds.has(docSnap.id));
+  const snapshot = await getDocs(query(collectionRef, where('ownerId', '==', userId)));
+  const docsToDelete = snapshot.docs.filter((docSnap) => {
+    const data = docSnap.data();
+    const storedId = data?.id ?? docSnap.id;
+    return !itemIds.has(storedId);
+  });
 
   batch = writeBatch(db);
   operationCount = 0;
@@ -125,8 +140,8 @@ const writeCollectionItems = async (userId, collectionName, items = []) => {
 };
 
 const readCollectionItems = async (userId, collectionName) => {
-  const collectionRef = getUserCollectionRef(userId, collectionName);
-  const snapshot = await getDocs(query(collectionRef));
+  const collectionRef = getSharedCollectionRef(collectionName);
+  const snapshot = await getDocs(query(collectionRef, where('ownerId', '==', userId)));
   return snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     return { ...data, id: data.id ?? docSnap.id };
@@ -134,41 +149,90 @@ const readCollectionItems = async (userId, collectionName) => {
 };
 
 const migrateLegacyUserData = async (userId) => {
+  const configRef = getUserConfigDocRef(userId);
+  const configSnap = await getDoc(configRef);
+
+  if (configSnap.exists() && configSnap.data()?.migratedToShared) {
+    return;
+  }
+
   const legacyDocRef = getLegacyUserDocRef(userId);
   const legacySnap = await getDoc(legacyDocRef);
+  const legacyDocData = legacySnap.exists() ? legacySnap.data() : null;
 
-  if (!legacySnap.exists()) {
-    return;
+  const legacyUserSnap = await getDoc(getLegacyUserRootRef(userId));
+  const legacyUserData = legacyUserSnap.exists() ? legacyUserSnap.data() : null;
+
+  const dataToMigrate = createEmptyUserData();
+  dataToMigrate.config = legacyUserData?.config || legacyDocData?.config || {};
+
+  const legacyCollections = await Promise.all(
+    SHARED_DATA_COLLECTIONS.map(async (collectionName) => {
+      const legacyCollectionRef = getLegacyUserCollectionRef(userId, collectionName);
+      const snapshot = await getDocs(query(legacyCollectionRef));
+      return snapshot.docs.map((docSnap) => ({
+        ...docSnap.data(),
+        id: docSnap.data()?.id ?? docSnap.id
+      }));
+    })
+  );
+
+  SHARED_DATA_COLLECTIONS.forEach((collectionName, index) => {
+    dataToMigrate[collectionName] = legacyCollections[index] || [];
+  });
+
+  if (legacyDocData) {
+    SHARED_DATA_COLLECTIONS.forEach((collectionName) => {
+      if (dataToMigrate[collectionName]?.length === 0 && Array.isArray(legacyDocData[collectionName])) {
+        dataToMigrate[collectionName] = legacyDocData[collectionName];
+      }
+    });
   }
 
-  const legacyData = legacySnap.data();
+  const hasLegacyData = SHARED_DATA_COLLECTIONS.some(
+    (collectionName) => (dataToMigrate[collectionName] || []).length > 0
+  ) || Object.keys(dataToMigrate.config || {}).length > 0;
 
-  if (legacyData?.migratedToUsers) {
+  if (!hasLegacyData) {
     return;
   }
-
-  const dataToMigrate = {
-    ...createEmptyUserData(),
-    transactions: legacyData.transactions || [],
-    clients: legacyData.clients || [],
-    providers: legacyData.providers || [],
-    employees: legacyData.employees || [],
-    leads: legacyData.leads || [],
-    invoices: legacyData.invoices || [],
-    meetings: legacyData.meetings || [],
-    config: legacyData.config || {}
-  };
 
   await saveUserDataToCloud(userId, dataToMigrate);
 
-  await setDoc(legacyDocRef, {
-    migratedToUsers: true,
+  const legacyTasksRef = getLegacyUserCollectionRef(userId, COLLECTIONS.TASKS);
+  const legacyTasksSnap = await getDocs(query(legacyTasksRef));
+  if (!legacyTasksSnap.empty) {
+    const batch = writeBatch(db);
+    legacyTasksSnap.docs.forEach((docSnap) => {
+      const taskData = docSnap.data();
+      const taskRef = doc(db, COLLECTIONS.TASKS, docSnap.id);
+      batch.set(taskRef, {
+        ...taskData,
+        id: taskData.id ?? docSnap.id,
+        createdBy: taskData.createdBy || userId,
+        sharedWith: ensureArray(taskData.sharedWith).length > 0
+          ? taskData.sharedWith
+          : [taskData.createdBy || userId]
+      }, { merge: true });
+    });
+    await batch.commit();
+  }
+
+  await setDoc(configRef, {
+    migratedToShared: true,
     migratedAt: serverTimestamp()
   }, { merge: true });
+
+  if (legacyDocRef) {
+    await setDoc(legacyDocRef, {
+      migratedToShared: true,
+      migratedAt: serverTimestamp()
+    }, { merge: true });
+  }
 };
 
-const getUserTasksCollectionRef = (userId) => {
-  return collection(db, COLLECTIONS.USERS, userId, COLLECTIONS.TASKS);
+const getTasksCollectionRef = () => {
+  return collection(db, COLLECTIONS.TASKS);
 };
 
 const ensureArray = (value) => Array.isArray(value) ? value : [];
@@ -203,7 +267,7 @@ export const saveUserDataToCloud = async (userId, data) => {
   }
 
   try {
-    const userDocRef = getUserDocRef(userId);
+    const userDocRef = getUserConfigDocRef(userId);
     const userData = data || createEmptyUserData();
 
     await setDoc(userDocRef, {
@@ -238,31 +302,36 @@ export const loadUserDataFromCloud = async (userId) => {
   try {
     await migrateLegacyUserData(userId);
 
-    const userDocRef = getUserDocRef(userId);
+    const userDocRef = getUserConfigDocRef(userId);
     const docSnap = await getDoc(userDocRef);
 
-    if (!docSnap.exists()) {
-      return { success: true, data: null };
-    }
-
-    const data = docSnap.data();
     const collections = await Promise.all(
-      USER_SUBCOLLECTIONS.map((collectionName) => readCollectionItems(userId, collectionName))
+      SHARED_DATA_COLLECTIONS.map((collectionName) => readCollectionItems(userId, collectionName))
     );
 
-    const mapped = USER_SUBCOLLECTIONS.reduce((acc, collectionName, index) => {
+    const mapped = SHARED_DATA_COLLECTIONS.reduce((acc, collectionName, index) => {
       acc[collectionName] = collections[index];
       return acc;
     }, {});
+
+    const hasCollectionData = SHARED_DATA_COLLECTIONS.some(
+      (collectionName) => (mapped[collectionName] || []).length > 0
+    );
+
+    const data = docSnap.exists() ? docSnap.data() : null;
+
+    if (!data && !hasCollectionData) {
+      return { success: true, data: null };
+    }
 
     return {
       success: true,
       data: {
         ...createEmptyUserData(),
         ...mapped,
-        config: data.config || {}
+        config: data?.config || {}
       },
-      version: data.version
+      version: data?.version
     };
   } catch (error) {
     console.error('Error cargando datos de la nube:', error);
@@ -288,7 +357,7 @@ export const subscribeToUserData = (userId, callback) => {
     });
   };
 
-  const userDocRef = getUserDocRef(userId);
+  const userDocRef = getUserConfigDocRef(userId);
   const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
     if (docSnap.exists()) {
       const data = docSnap.data();
@@ -300,8 +369,11 @@ export const subscribeToUserData = (userId, callback) => {
     console.error('Error en suscripción de usuario:', error);
   });
 
-  const unsubscribes = USER_SUBCOLLECTIONS.map((collectionName) => {
-    const collectionRef = getUserCollectionRef(userId, collectionName);
+  const unsubscribes = SHARED_DATA_COLLECTIONS.map((collectionName) => {
+    const collectionRef = query(
+      getSharedCollectionRef(collectionName),
+      where('ownerId', '==', userId)
+    );
     return onSnapshot(collectionRef, (snapshot) => {
       currentData[collectionName] = snapshot.docs.map((docSnap) => {
         const data = docSnap.data();
@@ -329,7 +401,7 @@ export const loadTasksFromCloud = async (userId) => {
 
   try {
     const tasksQuery = query(
-      collectionGroup(db, COLLECTIONS.TASKS),
+      getTasksCollectionRef(),
       where('sharedWith', 'array-contains', userId)
     );
     const snapshot = await getDocs(tasksQuery);
@@ -351,7 +423,7 @@ export const subscribeToTasks = (userId, callback) => {
   }
 
   const tasksQuery = query(
-    collectionGroup(db, COLLECTIONS.TASKS),
+    getTasksCollectionRef(),
     where('sharedWith', 'array-contains', userId)
   );
 
@@ -373,7 +445,7 @@ export const saveTaskToCloud = async (userId, task) => {
 
   try {
     const ownerId = task.createdBy || userId;
-    const tasksCollectionRef = getUserTasksCollectionRef(ownerId);
+    const tasksCollectionRef = getTasksCollectionRef();
     const taskRef = task.id
       ? doc(tasksCollectionRef, task.id)
       : doc(tasksCollectionRef);
@@ -414,7 +486,7 @@ export const deleteTaskFromCloud = async (userId, task) => {
 
   try {
     const ownerId = task.createdBy || userId;
-    const taskRef = doc(db, COLLECTIONS.USERS, ownerId, COLLECTIONS.TASKS, task.id);
+    const taskRef = doc(db, COLLECTIONS.TASKS, task.id);
     await deleteDoc(taskRef);
     return { success: true };
   } catch (error) {
