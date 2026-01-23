@@ -244,14 +244,15 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     isSubscribedRef.current = true;
 
     const unsubscribe = subscribeToUserData(userId, (cloudData) => {
-      // Solo actualizar si los datos de la nube son más recientes
-      if (cloudData.version > localVersionRef.current) {
-        const mergedData = mergeCloudWithLocal(cloudData);
-        onDataUpdate?.(mergedData);
-        localVersionRef.current = cloudData.version;
-        setSyncStatus(SYNC_STATUS.SYNCED);
-        setLastSyncTime(new Date());
+      // SIEMPRE hacer merge con datos de la nube para sincronizar colecciones compartidas
+      // La lógica de mergeEntityArrays usa updatedAt de cada elemento para resolver conflictos
+      const mergedData = mergeCloudWithLocal(cloudData);
+      onDataUpdate?.(mergedData);
+      if (cloudData.version) {
+        localVersionRef.current = Math.max(localVersionRef.current, cloudData.version);
       }
+      setSyncStatus(SYNC_STATUS.SYNCED);
+      setLastSyncTime(new Date());
     });
 
     return () => {
