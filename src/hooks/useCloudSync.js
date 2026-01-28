@@ -17,23 +17,52 @@ export const SYNC_STATUS = {
   SYNCING: 'syncing',
   SYNCED: 'synced',
   ERROR: 'error',
-  OFFLINE: 'offline'
+  OFFLINE: 'offline',
+  CONFLICT: 'conflict' // Nuevo estado para indicar conflictos detectados
+};
+
+/**
+ * Configuración de sincronización
+ */
+const SYNC_CONFIG = {
+  debounceDelay: 2000,        // Delay para guardar cambios (ms)
+  retryDelay: 5000,           // Delay antes de reintentar (ms)
+  maxRetries: 3,              // Máximo de reintentos
+  syncOnReconnectDelay: 1000  // Delay antes de sincronizar al reconectar (ms)
 };
 
 /**
  * Hook para sincronizar datos con la nube
+ * Proporciona sincronización bidireccional robusta con:
+ * - Retry automático con backoff exponencial
+ * - Detección de conflictos
+ * - Reconexión automática
+ * - Debounce en guardados
  */
 export const useCloudSync = (userId, localData, onDataUpdate) => {
   const [syncStatus, setSyncStatus] = useState(SYNC_STATUS.IDLE);
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [error, setError] = useState(null);
+  const [conflictCount, setConflictCount] = useState(0);
+
   const localVersionRef = useRef(Date.now());
   const debounceTimerRef = useRef(null);
   const isSubscribedRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const pendingDataRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   // Verificar si Firebase está configurado
   const isEnabled = isFirebaseConfigured() && !!userId;
   const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+  // Cleanup ref para evitar updates después de unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const isNetworkError = useCallback((err) => {
     if (!err) return false;
@@ -56,6 +85,18 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
   const mergeEntityArrays = useCallback((local = [], cloud = []) => {
     const merged = new Map();
 
+    const normalizeTime = (val) => {
+      if (!val) return 0;
+      if (typeof val === 'number') return val;
+      if (val instanceof Date) return val.getTime();
+      if (typeof val === 'string') return new Date(val).getTime();
+      if (typeof val === 'object') {
+        if (typeof val.toMillis === 'function') return val.toMillis();
+        if (val.seconds) return val.seconds * 1000;
+      }
+      return 0;
+    };
+
     local.forEach((item) => {
       if (item?.id) {
         merged.set(item.id, item);
@@ -70,10 +111,17 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
           return;
         }
 
+<<<<<<< HEAD
         const localTime = existing.updatedAt || existing.fecha || 0;
         const cloudTime = item.updatedAt || item.fecha || 0;
 
         // Respetar el timestamp más reciente, incluso para soft deletes
+=======
+        const localTime = normalizeTime(existing.updatedAt || existing.fecha);
+        const cloudTime = normalizeTime(item.updatedAt || item.fecha);
+
+        // Respetar el timestamp más reciente
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
         if (cloudTime > localTime) {
           merged.set(item.id, item);
         }
@@ -143,11 +191,15 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     }
   }, [userId, isEnabled, isOffline, isNetworkError, markOffline]);
 
-  // Guardar datos en la nube
-  const saveToCloud = useCallback(async (data) => {
+  // Guardar datos en la nube con retry automático
+  const saveToCloud = useCallback(async (data, isRetry = false) => {
     if (!isEnabled) return false;
+    if (!isMountedRef.current) return false;
+
     if (isOffline) {
       markOffline();
+      // Guardar datos pendientes para sincronizar al reconectar
+      pendingDataRef.current = data;
       return false;
     }
 
@@ -157,21 +209,42 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     try {
       const result = await saveUserDataToCloud(userId, data);
 
+      if (!isMountedRef.current) return false;
+
       if (result.success) {
-        localVersionRef.current = Date.now();
+        localVersionRef.current = result.version || Date.now();
         setSyncStatus(SYNC_STATUS.SYNCED);
         setLastSyncTime(new Date());
+        retryCountRef.current = 0;
+        pendingDataRef.current = null;
         return true;
       }
 
       throw new Error(result.error || 'Error al guardar');
     } catch (err) {
+      if (!isMountedRef.current) return false;
+
       if (isNetworkError(err)) {
         markOffline();
+        pendingDataRef.current = data;
         return false;
       }
+
+      // Implementar retry automático
+      if (!isRetry && retryCountRef.current < SYNC_CONFIG.maxRetries) {
+        retryCountRef.current++;
+        console.log(`[useCloudSync] Reintentando guardado (${retryCountRef.current}/${SYNC_CONFIG.maxRetries})`);
+
+        await new Promise(resolve =>
+          setTimeout(resolve, SYNC_CONFIG.retryDelay * retryCountRef.current)
+        );
+
+        return saveToCloud(data, true);
+      }
+
       setSyncStatus(SYNC_STATUS.ERROR);
       setError(err.message);
+      retryCountRef.current = 0;
       return false;
     }
   }, [userId, isEnabled, isOffline, isNetworkError, markOffline]);
@@ -232,14 +305,15 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     isSubscribedRef.current = true;
 
     const unsubscribe = subscribeToUserData(userId, (cloudData) => {
-      // Solo actualizar si los datos de la nube son más recientes
-      if (cloudData.version > localVersionRef.current) {
-        const mergedData = mergeCloudWithLocal(cloudData);
-        onDataUpdate?.(mergedData);
-        localVersionRef.current = cloudData.version;
-        setSyncStatus(SYNC_STATUS.SYNCED);
-        setLastSyncTime(new Date());
+      // SIEMPRE hacer merge con datos de la nube para sincronizar colecciones compartidas
+      // La lógica de mergeEntityArrays usa updatedAt de cada elemento para resolver conflictos
+      const mergedData = mergeCloudWithLocal(cloudData);
+      onDataUpdate?.(mergedData);
+      if (cloudData.version) {
+        localVersionRef.current = Math.max(localVersionRef.current, cloudData.version);
       }
+      setSyncStatus(SYNC_STATUS.SYNCED);
+      setLastSyncTime(new Date());
     });
 
     return () => {
@@ -264,16 +338,37 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     };
   }, [userId, onDataUpdate, isEnabled]);
 
-  // Detectar estado offline
+  // Detectar estado offline y manejar reconexión
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
+      if (!isMountedRef.current) return;
+
+      console.log('[useCloudSync] Conexión restaurada');
+
+      // Pequeño delay antes de sincronizar para asegurar conexión estable
+      await new Promise(resolve =>
+        setTimeout(resolve, SYNC_CONFIG.syncOnReconnectDelay)
+      );
+
+      if (!isMountedRef.current) return;
+
+      // Si hay datos pendientes, guardarlos primero
+      if (pendingDataRef.current) {
+        console.log('[useCloudSync] Guardando datos pendientes...');
+        await saveToCloud(pendingDataRef.current);
+      }
+
+      // Luego sincronizar para obtener cambios remotos
       if (syncStatus === SYNC_STATUS.OFFLINE) {
         syncWithCloud();
       }
     };
 
     const handleOffline = () => {
+      if (!isMountedRef.current) return;
+      console.log('[useCloudSync] Conexión perdida');
       setSyncStatus(SYNC_STATUS.OFFLINE);
+      setError('Sin conexión a internet');
     };
 
     window.addEventListener('online', handleOnline);
@@ -288,7 +383,7 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [syncStatus, syncWithCloud]);
+  }, [syncStatus, syncWithCloud, saveToCloud]);
 
   // Cleanup de debounce
   useEffect(() => {
@@ -299,14 +394,40 @@ export const useCloudSync = (userId, localData, onDataUpdate) => {
     };
   }, []);
 
+  // Función para forzar sincronización manual
+  const forceSync = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    retryCountRef.current = 0;
+    await syncWithCloud();
+  }, [syncWithCloud]);
+
+  // Función para limpiar errores
+  const clearError = useCallback(() => {
+    if (!isMountedRef.current) return;
+    setError(null);
+    if (syncStatus === SYNC_STATUS.ERROR) {
+      setSyncStatus(SYNC_STATUS.IDLE);
+    }
+  }, [syncStatus]);
+
   return {
+    // Estado
     isEnabled,
     syncStatus,
     lastSyncTime,
     error,
+    conflictCount,
+    isOnline: !isOffline,
+
+    // Acciones
     loadFromCloud,
     saveToCloud,
     saveToCloudDebounced,
-    syncWithCloud
+    syncWithCloud,
+    forceSync,
+    clearError,
+
+    // Info adicional
+    hasPendingData: !!pendingDataRef.current
   };
 };

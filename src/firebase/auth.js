@@ -11,7 +11,7 @@ import { auth, db, isFirebaseConfigured } from './config';
 
 const upsertUserProfile = async ({ uid, displayName, email }) => {
   if (!db) return;
-  const userRef = doc(db, 'users', uid);
+  const userRef = doc(db, 'profiles', uid);
   await setDoc(userRef, {
     displayName: displayName || '',
     email: email || '',
@@ -85,6 +85,18 @@ export const loginUser = async (email, password) => {
     console.log('Intentando iniciar sesión:', email);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     console.log('Sesión iniciada exitosamente:', userCredential.user.uid);
+
+    // Asegurar que el perfil público exista y esté actualizado
+    try {
+      await upsertUserProfile({
+        uid: userCredential.user.uid,
+        displayName: userCredential.user.displayName || '',
+        email: userCredential.user.email || email || ''
+      });
+    } catch (profileError) {
+      console.warn('No se pudo actualizar el perfil público en login:', profileError.message);
+    }
+
     return {
       success: true,
       user: userCredential.user,
@@ -144,7 +156,7 @@ export const resetPassword = async (email) => {
 export const subscribeToAuthChanges = (callback) => {
   if (!auth || !isFirebaseConfigured()) {
     callback(null);
-    return () => {};
+    return () => { };
   }
   return onAuthStateChanged(auth, callback);
 };

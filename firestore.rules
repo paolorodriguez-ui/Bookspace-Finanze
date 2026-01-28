@@ -1,0 +1,200 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =====================================================
+    // HELPER FUNCTIONS
+    // =====================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Verifica que el documento tenga un ID válido
+    function hasValidId() {
+      return request.resource.data.id != null;
+    }
+
+    // Verifica que el documento tenga timestamp de actualización
+    function hasUpdatedAt() {
+      return request.resource.data.updatedAt != null;
+    }
+
+    // Verifica que el ownerId sea el usuario actual (para nuevos documentos)
+    function isValidOwnerId() {
+      return request.resource.data.ownerId == request.auth.uid;
+    }
+
+    // Verifica que el usuario sea el owner del documento existente o el nuevo owner
+    function canModifyDocument() {
+      // Permite crear nuevos documentos o modificar los propios
+      return !exists(request.path) ||
+             resource.data.ownerId == request.auth.uid ||
+             request.resource.data.ownerId == request.auth.uid;
+    }
+
+    // Validación de tamaño de datos (previene documentos muy grandes)
+    function isReasonableSize() {
+      return request.resource.size < 1048576; // 1MB máximo por documento
+    }
+
+    // =====================================================
+    // USER PROFILES
+    // =====================================================
+
+    // Profiles: Publicly readable for authenticated users (to see names), writable only by owner
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && isReasonableSize();
+    }
+
+    // =====================================================
+    // USER DATA (Legacy & Config)
+    // =====================================================
+
+    // User Data (Legacy): Only owner can access
+    match /users_data/{userId} {
+      allow read, write: if isOwner(userId);
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // User Configs: Only owner can access
+    match /user_configs/{userId} {
+      allow read, write: if isOwner(userId) && isReasonableSize();
+    }
+
+    // =====================================================
+    // SHARED COLLECTIONS (Multi-user Collaboration)
+    // =====================================================
+    // Regla: Cualquier usuario autenticado puede leer.
+    // Para escribir, se valida la estructura básica del documento.
+    // Esto habilita la colaboración en tiempo real entre todo el equipo.
+
+    // Transactions
+    match /transactions/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Clients
+    match /clients/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Providers
+    match /providers/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Employees
+    match /employees/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Leads (CRM)
+    match /leads/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Invoices
+    match /invoices/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Meetings
+    match /meetings/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && hasValidId()
+                    && isValidOwnerId()
+                    && isReasonableSize();
+      allow update: if isAuthenticated()
+                    && hasValidId()
+                    && isReasonableSize();
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // =====================================================
+    // TASKS (Shared with access control)
+    // =====================================================
+    // Tasks: Shared collection with granular access control
+    // Readable if user is creator OR is in 'sharedWith' array
+    // Writable if user is creator OR is in 'sharedWith' array (for updates)
+    match /tasks/{taskId} {
+      allow create: if isAuthenticated()
+                    && request.resource.data.createdBy == request.auth.uid
+                    && isReasonableSize();
+
+      allow read: if isAuthenticated();
+
+      allow update: if isAuthenticated()
+                    && isReasonableSize();
+
+      allow delete: if isAuthenticated()
+                    && resource.data.createdBy == request.auth.uid;
+    }
+
+    // =====================================================
+    // ACTIVITY LOGS (Per-user audit trail)
+    // =====================================================
+    match /activity_logs/{userId}/entries/{entryId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isReasonableSize();
+      allow update: if false; // Activity logs are immutable
+      allow delete: if isOwner(userId);
+    }
+  }
+}

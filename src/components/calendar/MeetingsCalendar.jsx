@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, Users } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, Users, Plus } from 'lucide-react';
 
 const ESTADOS_JUNTA = [
   { id: 'todos', label: 'Todos los estados' },
@@ -65,7 +65,7 @@ const buildLeadOptions = (leads, meetings) => {
   return Array.from(options.entries()).map(([id, label]) => ({ id, label }));
 };
 
-export default function MeetingsCalendar({ meetings = [], leads = [], onSelectMeeting }) {
+export default function MeetingsCalendar({ meetings = [], leads = [], onSelectMeeting, onAddMeeting }) {
   const [view, setView] = useState('month');
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [estadoFiltro, setEstadoFiltro] = useState('todos');
@@ -157,20 +157,24 @@ export default function MeetingsCalendar({ meetings = [], leads = [], onSelectMe
     });
   };
 
+
   const renderMeetingPill = (meeting) => (
     <button
       key={meeting.id}
       type="button"
-      onClick={() => onSelectMeeting?.(meeting.source || meeting)}
-      className={`w-full text-left border rounded-lg px-2 py-1.5 text-xs font-medium transition hover:shadow-sm ${estadoStyles[meeting.estado] || 'bg-slate-100 text-slate-600 border-slate-200'}`}
+      onClick={(e) => {
+        e.stopPropagation(); // Avoid triggering day click
+        onSelectMeeting?.(meeting.source || meeting);
+      }}
+      className={`w-full text-left border rounded-lg px-2 py-1.5 text-xs font-medium transition hover:shadow-md hover:scale-[1.02] transform duration-200 ${estadoStyles[meeting.estado] || 'bg-slate-100 text-slate-600 border-slate-200'}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate">{meeting.leadNombre}</span>
+        <span className="truncate font-semibold">{meeting.leadNombre}</span>
         {meeting.start && meeting.end && (
-          <span className="text-[10px] whitespace-nowrap">{formatTime(meeting.start)}-{formatTime(meeting.end)}</span>
+          <span className="text-[10px] whitespace-nowrap opacity-80">{formatTime(meeting.start)}</span>
         )}
       </div>
-      <div className="text-[10px] text-slate-500 truncate">{meeting.tipo || 'Junta'} • {meeting.lugar || 'Sin ubicación'}</div>
+      <div className="text-[10px] opacity-75 truncate">{meeting.tipo || 'Junta'} • {meeting.lugar || 'Sin ubicación'}</div>
     </button>
   );
 
@@ -183,18 +187,22 @@ export default function MeetingsCalendar({ meetings = [], leads = [], onSelectMe
     return (
       <div
         key={dayKey}
-        className={`border border-gray-100 rounded-xl p-2 min-h-[120px] flex flex-col gap-2 ${isCurrentMonth ? 'bg-white' : 'bg-[#f8f9fc] text-[#b7bac3]'}`}
+        onClick={() => onAddMeeting?.(day)}
+        className={`border border-gray-100 rounded-xl p-2 min-h-[120px] flex flex-col gap-2 transition-colors cursor-pointer group hover:border-[#4f67eb]/30 ${isCurrentMonth ? 'bg-white hover:bg-slate-50' : 'bg-[#f8f9fc] text-[#b7bac3]'}`}
       >
         <div className="flex items-center justify-between text-xs">
-          <span className={`font-semibold ${isToday ? 'text-[#4f67eb]' : 'text-[#2a1d89]'}`}>{day.getDate()}</span>
+          <span className={`font-semibold ${isToday ? 'bg-[#4f67eb] text-white w-6 h-6 flex items-center justify-center rounded-full shadow-sm' : 'text-[#2a1d89]'}`}>{day.getDate()}</span>
           {dayMeetings.length > 0 && (
             <span className="text-[10px] text-[#b7bac3]">{dayMeetings.length} junta{dayMeetings.length !== 1 ? 's' : ''}</span>
           )}
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <Plus className="w-3.5 h-3.5 text-[#4f67eb]" />
+          </div>
         </div>
         <div className="space-y-1">
           {dayMeetings.slice(0, 3).map(renderMeetingPill)}
           {dayMeetings.length > 3 && (
-            <div className="text-[10px] text-[#4f67eb]">+{dayMeetings.length - 3} más</div>
+            <div className="text-[10px] text-[#4f67eb] px-1">+{dayMeetings.length - 3} más</div>
           )}
         </div>
       </div>
@@ -207,7 +215,11 @@ export default function MeetingsCalendar({ meetings = [], leads = [], onSelectMe
     const isToday = isSameDay(day, new Date());
 
     return (
-      <div key={dayKey} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+      <div
+        key={dayKey}
+        onClick={() => onAddMeeting?.(day)}
+        className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-[#4f67eb]/30 transition-colors cursor-pointer"
+      >
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className={`text-sm font-semibold ${isToday ? 'text-[#4f67eb]' : 'text-[#2a1d89]'}`}>
@@ -215,11 +227,15 @@ export default function MeetingsCalendar({ meetings = [], leads = [], onSelectMe
             </p>
             <p className="text-xs text-[#b7bac3]">{day.toLocaleDateString('es-MX', { month: 'long' })}</p>
           </div>
-          <span className="text-xs text-[#b7bac3]">{dayMeetings.length} juntas</span>
+          <button className="text-[#4f67eb] hover:bg-[#4f67eb]/10 p-1.5 rounded-lg transition">
+            <Plus className="w-4 h-4" />
+          </button>
         </div>
         <div className="space-y-2">
           {dayMeetings.length === 0 ? (
-            <p className="text-xs text-[#b7bac3]">Sin juntas</p>
+            <div className="h-20 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-xl">
+              <p className="text-xs text-[#b7bac3]">Click para agregar</p>
+            </div>
           ) : (
             dayMeetings.map(renderMeetingPill)
           )}

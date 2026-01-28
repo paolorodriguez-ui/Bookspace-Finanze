@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Mail, Lock, User, Eye, EyeOff, LogIn, UserPlus, ArrowLeft, X } from 'lucide-react';
+import { BookspaceLogo } from '../common';
 
 /**
  * Modal de autenticación (Login/Registro)
@@ -111,10 +112,8 @@ export const AuthModal = ({ isOpen, onClose, onLogin, onRegister, onResetPasswor
           )}
 
           <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center">
-              {mode === 'login' && <LogIn className="w-8 h-8" />}
-              {mode === 'register' && <UserPlus className="w-8 h-8" />}
-              {mode === 'reset' && <Mail className="w-8 h-8" />}
+            <div className="w-24 mx-auto mb-4">
+              <BookspaceLogo size={80} />
             </div>
             <h2 className="text-2xl font-bold">
               {mode === 'login' && 'Iniciar Sesión'}

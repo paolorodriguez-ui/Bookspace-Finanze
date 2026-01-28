@@ -17,7 +17,10 @@ export {
   saveTaskToCloud,
   deleteTaskFromCloud,
   exportDataToJSON,
-  importDataFromJSON
+  importDataFromJSON,
+  softDeleteItem,
+  restoreDeletedItem,
+  getSyncStats
 } from './sync';
 export { loadUsersFromCloud, subscribeToUsers } from './users';
 export {

@@ -4,8 +4,10 @@ import { Plus, Trash2, Download, CheckCircle, Users, Receipt, Settings, X, BarCh
 // Auth & Sync
 import { useAuth, useCloudSync, SYNC_STATUS, useActivityLog, useUsers } from './hooks';
 import { AuthModal, SyncIndicator } from './components/auth';
+import { subscribeToTasks } from './firebase';
 import { UserMenu } from './components/layout';
 import { ActivityLog, ActivityWidget } from './components/ActivityLog';
+import { BookspaceLogo } from './components/common';
 
 // ========== CONSTANTES ==========
 const CAT_ING = ['Comisiones', 'Premium', 'Premium +', 'Silver', 'Gold', 'Capital', 'Préstamo', 'Otro'];
@@ -42,26 +44,6 @@ const getUpdatedAt = () => Date.now();
 const TasksBoard = React.lazy(() => import('./components/tasks/TasksBoard'));
 const MeetingsCalendar = React.lazy(() => import('./components/calendar/MeetingsCalendar'));
 
-// Bookspace Logo Component
-const BookspaceLogo = ({ size = 40 }) => (
-  <svg width={size} height={size} viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <defs>
-      <linearGradient id="bookspaceGradient" x1="16" y1="10" x2="104" y2="110" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#4f67eb" />
-        <stop offset="1" stopColor="#2a1d89" />
-      </linearGradient>
-    </defs>
-    <rect x="10" y="18" width="100" height="92" rx="18" stroke="url(#bookspaceGradient)" strokeWidth="8" />
-    <rect x="30" y="6" width="16" height="24" rx="6" fill="url(#bookspaceGradient)" />
-    <rect x="52" y="6" width="16" height="24" rx="6" fill="url(#bookspaceGradient)" />
-    <rect x="74" y="6" width="16" height="24" rx="6" fill="url(#bookspaceGradient)" />
-    <rect x="30" y="46" width="34" height="34" rx="10" fill="#4f67eb" />
-    <rect x="70" y="46" width="24" height="24" rx="8" fill="#2a1d89" />
-    <rect x="30" y="78" width="20" height="20" rx="8" fill="#2a1d89" />
-    <rect x="50" y="70" width="44" height="28" rx="12" fill="#4f67eb" />
-  </svg>
-);
-
 // ========== COMPONENTE PRINCIPAL ==========
 export default function BookspaceERP() {
   const [tab, setTab] = useState('dashboard');
@@ -95,10 +77,14 @@ export default function BookspaceERP() {
   const [cfg, setCfg] = useState({ empresa: 'Bookspace', rfc: '', dir: '', tel: '', email: '' });
 
   // Modal
+  // Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState(null);
   const [editData, setEditData] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Notifications
+  const [notificationOpen, setNotificationOpen] = useState(false);
 
   // Auth Modal
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -129,17 +115,7 @@ export default function BookspaceERP() {
     config: cfg
   }), [tx, cli, prov, emp, leads, fact, juntas, cfg]);
 
-  const serializedData = useMemo(() => ({
-    tx: JSON.stringify(tx),
-    cli: JSON.stringify(cli),
-    prov: JSON.stringify(prov),
-    emp: JSON.stringify(emp),
-    leads: JSON.stringify(leads),
-    fact: JSON.stringify(fact),
-    juntas: JSON.stringify(juntas),
-    tasks: JSON.stringify(tasks),
-    cfg: JSON.stringify(cfg)
-  }), [tx, cli, prov, emp, leads, fact, juntas, tasks, cfg]);
+
 
   // Callback para actualizar datos desde la nube
   const handleCloudDataUpdate = useCallback((cloudData) => {
@@ -195,7 +171,7 @@ export default function BookspaceERP() {
             try {
               return await window.storage.get(key);
             } catch (e) {
-              console.log('Error loading', key);
+              // console.log('Error loading', key);
               return null;
             }
           })
@@ -207,7 +183,7 @@ export default function BookspaceERP() {
           }
         });
       } catch (e) {
-        console.log('Storage error');
+        // console.log('Storage error');
       }
       setLoading(false);
     };
@@ -240,16 +216,17 @@ export default function BookspaceERP() {
     const saveData = async () => {
       try {
         // Guardar localmente
+        // OPTIMIZACIÓN: Stringify solo al guardar, no en cada render
         await Promise.all([
-          window.storage.set('bs12-tx', serializedData.tx),
-          window.storage.set('bs12-cli', serializedData.cli),
-          window.storage.set('bs12-prov', serializedData.prov),
-          window.storage.set('bs12-emp', serializedData.emp),
-          window.storage.set('bs12-leads', serializedData.leads),
-          window.storage.set('bs12-fact', serializedData.fact),
-          window.storage.set('bs12-juntas', serializedData.juntas),
-          window.storage.set('bs12-tasks', serializedData.tasks),
-          window.storage.set('bs12-cfg', serializedData.cfg)
+          window.storage.set('bs12-tx', JSON.stringify(tx)),
+          window.storage.set('bs12-cli', JSON.stringify(cli)),
+          window.storage.set('bs12-prov', JSON.stringify(prov)),
+          window.storage.set('bs12-emp', JSON.stringify(emp)),
+          window.storage.set('bs12-leads', JSON.stringify(leads)),
+          window.storage.set('bs12-fact', JSON.stringify(fact)),
+          window.storage.set('bs12-juntas', JSON.stringify(juntas)),
+          window.storage.set('bs12-tasks', JSON.stringify(tasks)),
+          window.storage.set('bs12-cfg', JSON.stringify(cfg))
         ]);
 
         // Sincronizar con la nube si está habilitado
@@ -257,13 +234,13 @@ export default function BookspaceERP() {
           saveToCloudDebounced(allData);
         }
       } catch (e) {
-        console.log('Save error');
+        // console.log('Save error');
       }
     };
 
     const timer = setTimeout(saveData, 500);
     return () => clearTimeout(timer);
-  }, [serializedData, loading, syncEnabled, isAuthenticated, allData, saveToCloudDebounced]);
+  }, [tx, cli, prov, emp, leads, fact, juntas, tasks, cfg, loading, syncEnabled, isAuthenticated, allData, saveToCloudDebounced]);
 
   // Sincronizar cuando el usuario inicie sesión
   useEffect(() => {
@@ -277,10 +254,19 @@ export default function BookspaceERP() {
             notify('Datos sincronizados desde la nube');
           }
         } catch (e) {
-          console.log('Error syncing on login:', e);
+          // console.log('Error syncing on login:', e);
         }
       };
       syncOnLogin();
+
+      // Suscribirse a cambios en tareas en tiempo real
+      const unsubscribeTasks = subscribeToTasks(user.uid, (updatedTasks) => {
+        setTasks(updatedTasks);
+      });
+
+      return () => {
+        unsubscribeTasks();
+      };
     }
   }, [isAuthenticated, user?.uid, loading]);
 
@@ -426,8 +412,35 @@ export default function BookspaceERP() {
         t.monto
       ].some(value => String(value ?? '').toLowerCase().includes(normalizedSearch));
       return !t.deleted && matchAño && matchMes && matchSearch;
+<<<<<<< HEAD
     });
+=======
+    }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha)); // Ordenar por fecha descendente
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
   }, [tx, año, mes, normalizedSearch]);
+
+  // ========== BALANCES ACUMULADOS (HISTÓRICO COMPLETO) ==========
+  const balancesAcumulados = useMemo(() => {
+    let efectivo = 0, banco = 0, xCobrar = 0, xPagar = 0;
+
+    // Iterar sobre TODO el historial (sin filtro de fecha) para obtener balances reales
+    tx.forEach(t => {
+      if (t.deleted) return;
+
+      const m = Number(t.monto) || 0;
+      if (t.tipo === 'Ingreso') {
+        if (t.caja === 'Efectivo') efectivo += m;
+        else if (t.caja === 'Banco') banco += m;
+        else if (t.caja === 'Por cobrar') xCobrar += m;
+      } else {
+        if (t.caja === 'Efectivo') efectivo -= m;
+        else if (t.caja === 'Banco') banco -= m;
+        else if (t.caja === 'Por pagar') xPagar += m;
+      }
+    });
+
+    return { efectivo, banco, xCobrar, xPagar, liquidez: efectivo + banco };
+  }, [tx]);
 
   // ========== CALCULOS ==========
   const totales = useMemo(() => {
@@ -437,6 +450,7 @@ export default function BookspaceERP() {
       const m = Number(t.monto) || 0;
       if (t.tipo === 'Ingreso') {
         ing += m;
+        // Solo para logs visuales de flujo mensual (opcional, pero mantenemos lógica original)
         if (t.caja === 'Efectivo') efectivo += m;
         else if (t.caja === 'Banco') banco += m;
         else if (t.caja === 'Por cobrar') xCobrar += m;
@@ -503,8 +517,13 @@ export default function BookspaceERP() {
   const metricas = useMemo(() => {
     const margenBruto = totales.ing > 0 ? ((totales.balance / totales.ing) * 100) : 0;
     const roi = totales.egr > 0 ? ((totales.balance / totales.egr) * 100) : 0;
+<<<<<<< HEAD
     const liquidez = totales.efectivo + totales.banco;
     const capitalTrabajo = liquidez + totales.xCobrar - totales.xPagar;
+=======
+    const liquidez = balancesAcumulados.liquidez;
+    const capitalTrabajo = liquidez + balancesAcumulados.xCobrar - balancesAcumulados.xPagar;
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
     const promedioIngreso = txFiltradas.filter(t => t.tipo === 'Ingreso').length > 0
       ? totales.ing / txFiltradas.filter(t => t.tipo === 'Ingreso').length : 0;
     const promedioEgreso = txFiltradas.filter(t => t.tipo === 'Egreso').length > 0
@@ -677,8 +696,12 @@ export default function BookspaceERP() {
         { key: 'fuente', label: 'Fuente' },
         { key: 'fecha', label: 'Fecha' },
       ],
+<<<<<<< HEAD
       ],
     rows: leads.filter(l => !l.deleted),
+=======
+      rows: leads.filter(l => !l.deleted),
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
     },
 {
   id: 'fact',
@@ -706,7 +729,11 @@ export default function BookspaceERP() {
           { key: 'lugar', label: 'Lugar' },
         ],
       ],
+<<<<<<< HEAD
   rows: juntas.filter(j => !j.deleted),
+=======
+      rows: juntas.filter(j => !j.deleted),
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
     },
   ]), [txFiltradas, cliFiltradas, provFiltradas, empFiltradas, leads, factFiltradas, juntas]);
 
@@ -821,6 +848,7 @@ const agregarTx = () => {
   notify('Registro agregado');
 };
 
+<<<<<<< HEAD
 const actualizarTx = (id, campo, valor) => {
   setTx(prev => prev.map(t => {
     if (t.id === id) {
@@ -881,6 +909,108 @@ const convertirLead = () => {
     tel: editData.tel || '',
     notas: `Convertido de lead. Plan: ${PLANES.find(p => p.id === editData.plan)?.nombre}`,
     updatedAt
+=======
+  const cambiarCampo = (campo, valor) => {
+    setEditData(prev => ({ ...prev, [campo]: valor }));
+  };
+
+  const ejecutarEliminacion = () => {
+    if (!editData) return;
+
+    switch (modalType) {
+      case 'lead':
+        setLeads(prev => prev.map(l => l.id === editData.id ? { ...l, deleted: true, updatedAt: getUpdatedAt() } : l));
+        setJuntas(prev => prev.map(j => j.leadId === editData.id ? { ...j, deleted: true, updatedAt: getUpdatedAt() } : j));
+        logLead('delete', editData);
+        notify('Lead eliminado');
+        break;
+      case 'cli':
+        setCli(prev => prev.map(c => c.id === editData.id ? { ...c, deleted: true, updatedAt: getUpdatedAt() } : c));
+        logClient('delete', editData);
+        notify('Cliente eliminado');
+        break;
+      case 'prov':
+        setProv(prev => prev.map(p => p.id === editData.id ? { ...p, deleted: true, updatedAt: getUpdatedAt() } : p));
+        logProvider('delete', editData);
+        notify('Proveedor eliminado');
+        break;
+      case 'emp':
+        setEmp(prev => prev.map(e => e.id === editData.id ? { ...e, deleted: true, updatedAt: getUpdatedAt() } : e));
+        logEmployee('delete', editData);
+        notify('Empleado eliminado');
+        break;
+      case 'fact':
+        setFact(prev => prev.map(f => f.id === editData.id ? { ...f, deleted: true, updatedAt: getUpdatedAt() } : f));
+        logInvoice('delete', editData);
+        notify('Factura eliminada');
+        break;
+      case 'junta':
+        setJuntas(prev => prev.map(j => j.id === editData.id ? { ...j, deleted: true, updatedAt: getUpdatedAt() } : j));
+        logMeeting('delete', editData);
+        notify('Junta eliminada');
+        break;
+    }
+    cerrarModal();
+  };
+
+  // ========== CRUD ==========
+  const agregarTx = () => {
+    // Determinar fecha por defecto: Hoy, o el primer día del mes seleccionado
+    let defaultDate = new Date().toISOString().split('T')[0];
+
+    if (mes !== 0) {
+      // Si hay un mes seleccionado, verificar si "Hoy" está dentro de ese mes
+      const today = new Date();
+      if (today.getFullYear() !== año || (today.getMonth() + 1) !== mes) {
+        // Si hoy NO está en el mes seleccionado, usar el día 1 del mes seleccionado
+        const paddedMonth = String(mes).padStart(2, '0');
+        defaultDate = `${año}-${paddedMonth}-01`;
+      }
+    }
+
+    const nueva = {
+      id: Date.now() + Math.random().toString().slice(2, 6),
+      fecha: defaultDate,
+      tipo: 'Ingreso',
+      cat: '',
+      concepto: '',
+      notas: '',
+      caja: 'Efectivo',
+      monto: '',
+      updatedAt: getUpdatedAt()
+    };
+    setTx(prev => [nueva, ...prev]);
+    logTransaction('create', nueva);
+    notify('Registro agregado');
+  };
+
+  const actualizarTx = (id, campo, valor) => {
+    setTx(prev => prev.map(t => {
+      if (t.id === id) {
+        // ACTUALIZACIÓN VISUAL: Solo actualizamos el estado, NO LOGUEAMOS AQUI
+        // El log se hará en el evento onBlur de los inputs
+        return { ...t, [campo]: valor, updatedAt: getUpdatedAt() };
+      }
+      return t;
+    }));
+  };
+
+  // Nueva función para loguear cambios explícitos (usar en onBlur)
+  const logTxChange = (id, campo) => {
+    const transaction = tx.find(t => t.id === id);
+    if (transaction) {
+      logTransaction('update', transaction);
+    }
+  };
+
+  const eliminarTx = (id) => {
+    const txToDelete = tx.find(t => t.id === id);
+    if (txToDelete) {
+      logTransaction('delete', txToDelete);
+    }
+    setTx(prev => prev.map(t => t.id === id ? { ...t, deleted: true, updatedAt: getUpdatedAt() } : t));
+    notify('Registro eliminado');
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
   };
 
   setCli(prev => [nuevoCliente, ...prev]);
@@ -963,11 +1093,44 @@ const agregarFactura = () => {
   notify('Factura creada');
 };
 
+<<<<<<< HEAD
 const actualizarItemFactura = (idx, campo, valor) => {
   const newItems = editData.items.map((item, i) => i === idx ? { ...item, [campo]: valor } : item);
   const totales = calcularTotales(newItems);
   setEditData(prev => ({ ...prev, items: newItems, ...totales }));
 };
+=======
+  const agregarJunta = (leadId = null, preselectedDate = null) => {
+    const lead = leadId ? leads.find(l => l.id === leadId) : null;
+    let fechaJunta = new Date().toISOString().split('T')[0];
+
+    if (preselectedDate) {
+      if (preselectedDate instanceof Date) {
+        fechaJunta = preselectedDate.toISOString().split('T')[0];
+      } else {
+        fechaJunta = String(preselectedDate);
+      }
+    }
+
+    const nueva = {
+      id: Date.now(),
+      leadId: leadId || '',
+      leadNombre: lead ? (lead.venue || lead.contacto) : '',
+      fecha: fechaJunta,
+      hora: '10:00',
+      duracion: '60',
+      lugar: '',
+      tipo: 'presencial',
+      notas: '',
+      estado: 'pendiente',
+      updatedAt: getUpdatedAt()
+    };
+    setJuntas(prev => [nueva, ...prev]);
+    logMeeting('create', nueva);
+    abrirModal('junta', nueva);
+    notify('Junta programada');
+  };
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
 
 const agregarItemFactura = () => {
   const newItems = [...editData.items, { d: '', c: 1, p: 0 }];
@@ -1023,10 +1186,169 @@ const descargarArchivo = (blob, nombreArchivo) => {
   URL.revokeObjectURL(url);
 };
 
+<<<<<<< HEAD
 const exportarArchivo = useCallback((data, nombre, headers, mapFn, formato = 'csv') => {
   if (!data || data.length === 0) {
     notify('No hay datos para exportar', 'error');
     return;
+=======
+  const exportarArchivo = useCallback((data, nombre, headers, mapFn, formato = 'csv') => {
+    if (!data || data.length === 0) {
+      notify('No hay datos para exportar', 'error');
+      return;
+    }
+
+    try {
+      const fechaExport = new Date().toISOString().split('T')[0];
+      const periodoStr = mes > 0 ? `${MESES[mes - 1]}-${año}` : año;
+      let blob;
+      let extension = 'csv';
+
+      if (formato === 'json') {
+        extension = 'json';
+        const payload = {
+          nombre,
+          periodo: periodoStr,
+          exportadoEn: new Date().toISOString(),
+          headers,
+          rows: data.map(item => mapFn(item)),
+        };
+        const jsonContent = JSON.stringify(payload, null, 2);
+        blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      } else {
+        const BOM = '\uFEFF';
+        const csvRows = [headers];
+
+        data.forEach(item => {
+          const row = mapFn(item);
+          csvRows.push(row);
+        });
+
+        const csvContent = BOM + csvRows.map(row => {
+          if (Array.isArray(row)) {
+            return row.map(cell => {
+              const cellStr = String(cell ?? '');
+              if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                return `"${cellStr.replace(/"/g, '""')}"`;
+              }
+              return cellStr;
+            }).join(',');
+          }
+          return row;
+        }).join('\r\n');
+
+        blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      }
+
+      descargarArchivo(blob, `${nombre}_${periodoStr}_${fechaExport}.${extension}`);
+
+      notify(`${data.length} registros exportados`);
+    } catch (error) {
+      notify('Error al exportar', 'error');
+    }
+  }, [mes, año]);
+
+  const exportarTransacciones = (formato = 'csv') => {
+    exportarArchivo(txFiltradas, 'Transacciones', ['Fecha', 'Tipo', 'Categoría', 'Concepto', 'Notas', 'Caja', 'Monto'],
+      t => [t.fecha, t.tipo, t.cat || '', t.concepto || '', t.notas || '', t.caja, Number(t.monto) || 0], formato);
+  };
+
+  const exportarFacturas = (formato = 'csv') => {
+    exportarArchivo(factFiltradas, 'Facturas', ['Número', 'Fecha', 'Cliente', 'Estado', 'Total'],
+      f => [f.num, f.fecha, f.clienteNom || '', f.estado, f.total || 0], formato);
+  };
+
+  const exportarLeads = (formato = 'csv') => {
+    exportarArchivo(leads, 'Leads', ['Fecha', 'Contacto', 'Venue', 'Email', 'Estado', 'Plan'],
+      l => [l.fecha, l.contacto || '', l.venue || '', l.email || '', l.estado, PLANES.find(p => p.id === l.plan)?.nombre || ''], formato);
+  };
+
+  const exportarClientes = (formato = 'csv') => {
+    exportarArchivo(cli, 'Clientes', ['Nombre', 'RFC', 'Email', 'Teléfono'],
+      c => [c.nombre || '', c.rfc || '', c.email || '', c.tel || ''], formato);
+  };
+
+  const exportarRespaldo = () => {
+    const fechaExport = new Date().toISOString().split('T')[0];
+    const payload = {
+      exportadoEn: new Date().toISOString(),
+      empresa: cfg.empresa,
+      data: {
+        transacciones: tx,
+        clientes: cli,
+        proveedores: prov,
+        empleados: emp,
+        leads,
+        facturas: fact,
+        juntas,
+        configuracion: cfg,
+      },
+    };
+    const jsonContent = JSON.stringify(payload, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    descargarArchivo(blob, `Respaldo_Bookspace_${fechaExport}.json`);
+    notify('Respaldo completo exportado');
+  };
+
+  const leadsFiltrados = useMemo(() => {
+    return leads.filter(l => {
+      const matchTexto = !filtro ||
+        l.contacto?.toLowerCase().includes(filtro.toLowerCase()) ||
+        l.venue?.toLowerCase().includes(filtro.toLowerCase()) ||
+        l.ciudad?.toLowerCase().includes(filtro.toLowerCase());
+      const matchSearch = !normalizedSearch || [
+        l.contacto,
+        l.venue,
+        l.email,
+        l.tel,
+        l.ciudad,
+        l.estado,
+        l.plan,
+        l.fuente,
+        l.notas
+      ].some(value => String(value ?? '').toLowerCase().includes(normalizedSearch));
+      const matchEstado = filtroEstado === 'todos' || l.estado === filtroEstado;
+      return !l.deleted && matchTexto && matchEstado && matchSearch;
+    });
+  }, [leads, filtro, filtroEstado, normalizedSearch]);
+
+  const leadsPorEstado = useMemo(() => {
+    const grouped = EST_LEAD.reduce((acc, estado) => {
+      acc[estado.id] = [];
+      return acc;
+    }, {});
+    leadsFiltrados.forEach(lead => {
+      if (grouped[lead.estado]) {
+        grouped[lead.estado].push(lead);
+      }
+    });
+    return grouped;
+  }, [leadsFiltrados]);
+
+  const pipelineTotales = useMemo(() => {
+    const totales = EST_LEAD.reduce((acc, estado) => {
+      acc[estado.id] = { count: 0, valor: 0 };
+      return acc;
+    }, {});
+    leadsFiltrados.forEach(lead => {
+      if (!totales[lead.estado]) return;
+      totales[lead.estado].count += 1;
+      totales[lead.estado].valor += obtenerPrecioPlan(lead.plan);
+    });
+    return totales;
+  }, [leadsFiltrados]);
+
+  // ========== LOADING ==========
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-[#4f67eb] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[#2a1d89] font-medium">Cargando...</p>
+        </div>
+      </div>
+    );
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
   }
 
   try {
@@ -1143,6 +1465,7 @@ const leadsFiltrados = useMemo(() => {
   });
 }, [leads, filtro, filtroEstado, normalizedSearch]);
 
+<<<<<<< HEAD
 const leadsPorEstado = useMemo(() => {
   const grouped = EST_LEAD.reduce((acc, estado) => {
     acc[estado.id] = [];
@@ -1155,6 +1478,48 @@ const leadsPorEstado = useMemo(() => {
   });
   return grouped;
 }, [leadsFiltrados]);
+=======
+  // Stat Card Component
+  const StatCard = ({ title, value, subtitle, icon: Icon, color = 'primary', trend, onClick, className }) => {
+    const colorClasses = {
+      primary: 'border-l-[#4f67eb]',
+      success: 'border-l-emerald-500',
+      warning: 'border-l-amber-500',
+      danger: 'border-l-red-500'
+    };
+    const iconColors = {
+      primary: 'text-[#4f67eb] bg-[#4f67eb]/10',
+      success: 'text-emerald-600 bg-emerald-50',
+      warning: 'text-amber-600 bg-amber-50',
+      danger: 'text-red-600 bg-red-50'
+    };
+    return (
+      <div
+        onClick={onClick}
+        className={`bg-white rounded-xl border border-gray-100 p-5 shadow-sm transition-all border-l-4 ${colorClasses[color]} ${onClick ? 'cursor-pointer hover:shadow-md hover:scale-[1.01]' : ''} ${className || ''}`}
+      >
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-[#b7bac3] text-sm font-medium">{title}</p>
+            <p className="text-2xl font-bold text-[#2a1d89] mt-1">{value}</p>
+            {subtitle && (
+              <p className={`text-sm mt-1 flex items-center gap-1 ${trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-red-500' : 'text-[#b7bac3]'}`}>
+                {trend === 'up' && <ArrowUpRight className="w-3 h-3" />}
+                {trend === 'down' && <ArrowDownRight className="w-3 h-3" />}
+                {subtitle}
+              </p>
+            )}
+          </div>
+          {Icon && (
+            <div className={`p-3 rounded-xl ${iconColors[color]}`}>
+              <Icon className="w-5 h-5" />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
 
 const pipelineTotales = useMemo(() => {
   const totales = EST_LEAD.reduce((acc, estado) => {
@@ -1172,6 +1537,7 @@ const pipelineTotales = useMemo(() => {
 // ========== LOADING ==========
 if (loading) {
   return (
+<<<<<<< HEAD
     <div className="min-h-screen bg-white flex items-center justify-center" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
       <div className="text-center">
         <div className="w-16 h-16 border-4 border-[#4f67eb] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -1258,6 +1624,29 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = 'primary', trend
               {trend === 'down' && <ArrowDownRight className="w-3 h-3" />}
               {subtitle}
             </p>
+=======
+    <div className="min-h-screen bg-[#f8f9fc] flex" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+      {/* Google Fonts */}
+      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+      {/* Notification */}
+      {msg && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-fade-in border ${msg.type === 'error'
+            ? 'bg-red-600 text-white border-red-500'
+            : 'bg-[#2a1d89] text-white border-[#2a1d89]'
+            }`}
+          role={msg.type === 'error' ? 'alert' : 'status'}
+          aria-live={msg.type === 'error' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+          onMouseEnter={pauseToastTimer}
+          onMouseLeave={resumeToastTimer}
+        >
+          {msg.type === 'error' ? (
+            <AlertTriangle className="w-5 h-5" />
+          ) : (
+            <CheckCircle className="w-5 h-5" />
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
           )}
         </div>
         {Icon && (
@@ -1333,6 +1722,7 @@ return (
       <nav className="flex-1 p-3 space-y-1">
         {navItems.map(item => (
           <button
+<<<<<<< HEAD
             key={item.id}
             onClick={() => handleNav(item.id)}
             aria-label={item.label}
@@ -1385,6 +1775,39 @@ return (
               onClick={() => setSidebarOpen(true)}
               className="md:hidden p-2 rounded-xl border border-gray-100 text-[#2a1d89] hover:bg-[#f8f9fc]"
               aria-label="Abrir menú"
+=======
+            type="button"
+            onClick={() => setMsg(null)}
+            className="ml-auto rounded-full p-1 transition hover:bg-white/20"
+            aria-label="Cerrar notificación"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Sidebar */}
+      <aside className={`bg-white border-r border-gray-100 flex flex-col transition-all duration-300 fixed h-full z-30 w-64 ${sidebarOpen ? 'translate-x-0 md:w-64' : '-translate-x-full md:w-20'} md:translate-x-0`}>
+        {/* Logo */}
+        <div className="p-4 border-b border-gray-100 flex items-center justify-center gap-3">
+          <BookspaceLogo size={140} />
+          {/* Text removed as requested */}
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 p-3 space-y-1">
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => handleNav(item.id)}
+              aria-label={item.label}
+              title={item.label}
+              aria-current={tab === item.id ? 'page' : undefined}
+              className={`w-full relative group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${tab === item.id
+                ? 'bg-[#4f67eb] text-white shadow-md shadow-[#4f67eb]/20'
+                : 'text-[#2a1d89] hover:bg-[#4f67eb]/5'
+                }`}
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -1472,6 +1895,7 @@ return (
       {/* Page Content */}
       <main className="p-4 md:p-6">
 
+<<<<<<< HEAD
         {/* ===== DASHBOARD ===== */}
         {tab === 'dashboard' && (
           <div className="space-y-6">
@@ -1506,9 +1930,142 @@ return (
                 subtitle={`${factFiltradas.filter(f => f.estado === 'pendiente').length} facturas`}
                 icon={FileText}
                 color="warning"
+=======
+      {/* Main Content */}
+      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-20'}`}>
+        {/* Header */}
+        <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 px-4 md:px-6 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden p-2 rounded-xl border border-gray-100 text-[#2a1d89] hover:bg-[#f8f9fc]"
+                aria-label="Abrir menú"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-xl font-bold text-[#2a1d89]">{navItems.find(n => n.id === tab)?.label}</h1>
+                <p className="text-sm text-[#b7bac3]">
+                  {mes > 0 ? `${MESES_COMPLETOS[mes - 1]} ${año}` : `Todo ${año}`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center gap-4 w-full md:w-auto">
+              {/* Period Filter */}
+              <div className="flex flex-wrap items-center gap-2 bg-[#f8f9fc] px-3 py-2 rounded-xl">
+                <CalendarDays className="w-4 h-4 text-[#4f67eb]" />
+                <select
+                  value={año}
+                  onChange={e => setAño(Number(e.target.value))}
+                  className="bg-transparent text-sm font-medium text-[#2a1d89] outline-none cursor-pointer"
+                >
+                  {[2023, 2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+                <select
+                  value={mes}
+                  onChange={e => setMes(Number(e.target.value))}
+                  className="bg-transparent text-sm font-medium text-[#2a1d89] outline-none cursor-pointer"
+                >
+                  <option value={0}>Todos</option>
+                  {MESES_COMPLETOS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </div>
+
+              {/* Search */}
+              <div className="relative w-full md:w-auto">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#b7bac3]" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Buscar"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  aria-label="Buscar"
+                  role="searchbox"
+                  className="bg-[#f8f9fc] border-none rounded-xl pl-10 pr-4 py-2.5 text-sm w-full md:w-48 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#b7bac3] bg-white px-1.5 py-0.5 rounded">⌘K</span>
+              </div>
+
+              {/* Notifications */}
+              <div className="relative">
+                <button
+                  onClick={() => setNotificationOpen(!notificationOpen)}
+                  className={`relative p-2.5 rounded-xl transition ${notificationOpen ? 'bg-[#f8f9fc] text-[#2a1d89]' : 'text-[#b7bac3] hover:text-[#2a1d89] hover:bg-[#f8f9fc]'}`}
+                >
+                  <Bell className="w-5 h-5" />
+                  {juntasProximas.length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-[#4f67eb] rounded-full"></span>
+                  )}
+                </button>
+                {notificationOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-100 rounded-xl shadow-lg z-50 overflow-hidden animate-fade-in">
+                    <div className="p-3 border-b border-gray-100 flex justify-between items-center">
+                      <h3 className="font-semibold text-[#2a1d89] text-sm">Notificaciones</h3>
+                      <button onClick={() => setNotificationOpen(false)} className="text-[#b7bac3] hover:text-[#2a1d89]"><X className="w-4 h-4" /></button>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {juntasProximas.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-[#b7bac3]">No hay notificaciones nuevas</div>
+                      ) : (
+                        juntasProximas.map(j => (
+                          <div
+                            key={j.id}
+                            onClick={() => {
+                              abrirModal('junta', j);
+                              setNotificationOpen(false);
+                            }}
+                            className="p-3 border-b border-gray-50 hover:bg-[#f8f9fc] cursor-pointer transition"
+                          >
+                            <div className="flex gap-2">
+                              <div className="bg-[#4f67eb]/10 text-[#4f67eb] p-2 rounded-lg h-fit">
+                                <Clock className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-[#2a1d89]">Próxima junta</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{j.leadNombre}</p>
+                                <p className="text-[10px] text-[#4f67eb] mt-1">{new Date(j.fecha).toLocaleDateString('es-MX')} - {j.hora}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sync Status */}
+              {isAuthenticated && (
+                <SyncIndicator
+                  status={syncStatus}
+                  lastSyncTime={lastSyncTime}
+                  error={syncError}
+                  onRetry={syncWithCloud}
+                />
+              )}
+
+              {/* Profile / User Menu */}
+              <UserMenu
+                user={user}
+                isAuthenticated={isAuthenticated}
+                syncStatus={syncStatus}
+                onLogin={() => setAuthModalOpen(true)}
+                onLogout={async () => {
+                  const result = await logout();
+                  if (result.success) {
+                    notify('Sesión cerrada');
+                  }
+                }}
+                companyName={cfg.empresa}
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
               />
             </div>
 
+<<<<<<< HEAD
             {/* Main Content */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Chart */}
@@ -1518,6 +2075,83 @@ return (
                   <div className="flex gap-4 text-xs">
                     <span className="flex items-center gap-2"><span className="w-3 h-3 bg-[#4f67eb] rounded"></span>Ingresos</span>
                     <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-400 rounded"></span>Egresos</span>
+=======
+        {/* Page Content */}
+        <main className="p-4 md:p-6">
+
+          {/* ===== DASHBOARD ===== */}
+          {tab === 'dashboard' && (
+            <div className="space-y-6">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                  title="Total Ingresos"
+                  value={fmt(totales.ing)}
+                  subtitle={`${txFiltradas.filter(t => t.tipo === 'Ingreso').length} transacciones`}
+                  icon={ArrowUpRight}
+                  color="success"
+                  trend="up"
+                  onClick={() => { setTab('registros'); setFiltro(''); }}
+                />
+                <StatCard
+                  title="Total Egresos"
+                  value={fmt(totales.egr)}
+                  subtitle={`${txFiltradas.filter(t => t.tipo === 'Egreso').length} transacciones`}
+                  icon={ArrowDownRight}
+                  color="danger"
+                  trend="down"
+                  onClick={() => { setTab('registros'); setFiltro(''); }}
+                />
+                <StatCard
+                  title="Leads Activos"
+                  value={crmStats.proceso}
+                  subtitle={`${fmt(crmStats.potencial)}/mes potencial`}
+                  icon={Target}
+                  color="primary"
+                  onClick={() => setTab('crm')}
+                />
+                <StatCard
+                  title="Por Cobrar"
+                  value={fmt(factStats.pendiente)}
+                  subtitle={`${factFiltradas.filter(f => f.estado === 'pendiente').length} facturas`}
+                  icon={FileText}
+                  color="warning"
+                  onClick={() => setTab('facturas')}
+                />
+              </div>
+
+              {/* Main Content */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Chart */}
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-[#2a1d89]">Flujo Mensual {año}</h3>
+                    <div className="flex gap-4 text-xs">
+                      <span className="flex items-center gap-2"><span className="w-3 h-3 bg-[#4f67eb] rounded"></span>Ingresos</span>
+                      <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-400 rounded"></span>Egresos</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-12 gap-2">
+                    {analisisMensual.map((m, i) => {
+                      const maxVal = Math.max(...analisisMensual.map(x => Math.max(x.ing, x.egr))) || 1;
+                      const hIng = m.ing > 0 ? Math.max((m.ing / maxVal) * 120, 4) : 0;
+                      const hEgr = m.egr > 0 ? Math.max((m.egr / maxVal) * 120, 4) : 0;
+                      const isSelected = mes === i + 1;
+                      return (
+                        <div
+                          key={i}
+                          className={`text-center cursor-pointer rounded-xl p-2 transition-all ${isSelected ? 'bg-[#4f67eb]/10 ring-2 ring-[#4f67eb]' : 'hover:bg-gray-50'}`}
+                          onClick={() => setMes(mes === i + 1 ? 0 : i + 1)}
+                        >
+                          <div className="h-32 flex items-end justify-center gap-1 mb-2">
+                            <div className="w-3 bg-[#4f67eb] rounded-t transition-all" style={{ height: `${hIng}px` }}></div>
+                            <div className="w-3 bg-red-400 rounded-t transition-all" style={{ height: `${hEgr}px` }}></div>
+                          </div>
+                          <p className={`text-xs font-medium ${isSelected ? 'text-[#4f67eb]' : 'text-[#b7bac3]'}`}>{MESES[i]}</p>
+                        </div>
+                      );
+                    })}
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
                   </div>
                 </div>
                 <div className="grid grid-cols-12 gap-2">
@@ -1573,6 +2207,43 @@ return (
                   </div>
                 )}
               </div>
+<<<<<<< HEAD
+=======
+
+              {/* Activity Widget & Quick Stats */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center shadow-sm">
+                    <Wallet className="w-6 h-6 mx-auto mb-2 text-emerald-500" />
+                    <p className="text-lg font-bold text-[#2a1d89]">{fmt(balancesAcumulados.efectivo)}</p>
+                    <p className="text-sm text-[#b7bac3]">Efectivo (Total)</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center shadow-sm">
+                    <Building className="w-6 h-6 mx-auto mb-2 text-[#4f67eb]" />
+                    <p className="text-lg font-bold text-[#2a1d89]">{fmt(balancesAcumulados.banco)}</p>
+                    <p className="text-sm text-[#b7bac3]">Banco (Total)</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center shadow-sm">
+                    <CreditCard className="w-6 h-6 mx-auto mb-2 text-amber-500" />
+                    <p className="text-lg font-bold text-[#2a1d89]">{fmt(balancesAcumulados.xCobrar)}</p>
+                    <p className="text-sm text-[#b7bac3]">Por Cobrar</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center shadow-sm">
+                    <PiggyBank className="w-6 h-6 mx-auto mb-2 text-red-500" />
+                    <p className="text-lg font-bold text-[#2a1d89]">{fmt(balancesAcumulados.xPagar)}</p>
+                    <p className="text-sm text-[#b7bac3]">Por Pagar</p>
+                  </div>
+                </div>
+
+                {/* Recent Activity Widget */}
+                <ActivityWidget
+                  activities={activities}
+                  loading={activityLoading}
+                  maxItems={5}
+                  onViewAll={() => setTab('bitacora')}
+                />
+              </div>
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
             </div>
 
             {/* Pipeline CRM */}
@@ -1799,13 +2470,260 @@ return (
                     );
                   })}
                 </div>
+<<<<<<< HEAD
+=======
+              )}
+
+              {leadsFiltrados.length === 0 && (
+                <div className="text-center py-16">
+                  <Target className="w-16 h-16 mx-auto text-[#b7bac3] mb-4" />
+                  <p className="text-[#b7bac3]">No hay leads con estos filtros</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== JUNTAS ===== */}
+          {tab === 'juntas' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <p className="text-[#b7bac3] text-sm">{juntas.length} junta{juntas.length !== 1 ? 's' : ''} registrada{juntas.length !== 1 ? 's' : ''}</p>
+                <button
+                  onClick={() => agregarJunta()}
+                  className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20"
+                >
+                  <Plus className="w-4 h-4" />Nueva Junta
+                </button>
+              </div>
+              <Suspense fallback={<div className="flex items-center justify-center py-12 text-sm text-[#b7bac3]">Cargando calendario...</div>}>
+                <MeetingsCalendar
+                  meetings={juntas}
+                  leads={leads}
+                  onSelectMeeting={(meeting) => abrirModal('junta', meeting)}
+                  onAddMeeting={(date) => agregarJunta(null, date)}
+                />
+              </Suspense>
+            </div>
+          )}
+
+          {/* ===== TASKS ===== */}
+          {tab === 'tasks' && (
+            <Suspense fallback={<div className="flex items-center justify-center py-12 text-sm text-[#b7bac3]">Cargando tareas...</div>}>
+              <TasksBoard
+                tasks={tasks}
+                onTasksChange={setTasks}
+                userId={user?.uid}
+                isAuthenticated={isAuthenticated}
+                users={teamUsers}
+              />
+            </Suspense>
+          )}
+
+          {/* ===== FACTURAS ===== */}
+          {tab === 'facturas' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <p className="text-[#b7bac3] text-sm">{factFiltradas.length} facturas en este periodo</p>
+                <div className="flex gap-3">
+                  <ExportMenu onCsv={() => exportarFacturas('csv')} onJson={() => exportarFacturas('json')} />
+                  <button onClick={agregarFactura} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
+                    <Plus className="w-4 h-4" />Nueva Factura
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard title="Total Facturas" value={factStats.total} icon={FileText} color="primary" />
+                <StatCard title="Pendiente" value={fmt(factStats.pendiente)} icon={Clock} color="warning" />
+                <StatCard title="Cobrado" value={fmt(factStats.pagada)} icon={CheckCircle} color="success" />
+                <StatCard title="Total Facturado" value={fmt(factStats.pendiente + factStats.pagada)} icon={DollarSign} color="primary" />
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
               </div>
             )}
 
             {crmView === 'cards' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+<<<<<<< HEAD
                 {leadsFiltrados.map(l => {
                   const juntasLead = juntas.filter(j => j.leadId === l.id && j.estado === 'pendiente');
+=======
+                {factFiltradas.map(f => (
+                  <div key={f.id} onClick={() => abrirModal('fact', f)} className="bg-white border border-gray-100 rounded-2xl p-5 cursor-pointer hover:border-[#4f67eb] hover:shadow-lg transition-all">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="font-bold text-[#4f67eb]">{f.num}</p>
+                        <p className="text-[#b7bac3] text-sm">{f.clienteNom || 'Sin cliente'}</p>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${EST_FACT.find(e => e.id === f.estado)?.cl}`}>
+                        {EST_FACT.find(e => e.id === f.estado)?.nombre}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                      <span className="text-[#b7bac3] text-sm">{new Date(f.fecha).toLocaleDateString('es-MX')}</span>
+                      <span className="font-bold text-[#2a1d89]">{fmt(f.total)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {factFiltradas.length === 0 && (
+                <div className="text-center py-16">
+                  <FileText className="w-16 h-16 mx-auto text-[#b7bac3] mb-4" />
+                  <p className="text-[#b7bac3]">No hay facturas en este periodo</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ===== REGISTROS ===== */}
+          {tab === 'registros' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <p className="text-[#b7bac3] text-sm">{txFiltradas.length} registros en este periodo</p>
+                <div className="flex gap-3">
+                  <ExportMenu onCsv={() => exportarTransacciones('csv')} onJson={() => exportarTransacciones('json')} label="Exportar datos" />
+                  <button onClick={agregarTx} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
+                    <Plus className="w-4 h-4" />Nuevo Registro
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <StatCard title="Ingresos" value={fmt(totales.ing)} color="success" />
+                <StatCard title="Egresos" value={fmt(totales.egr)} color="danger" />
+                <StatCard title="Balance" value={fmt(totales.balance)} color={totales.balance >= 0 ? 'primary' : 'danger'} />
+              </div>
+
+              <div className="space-y-4 md:hidden">
+                {txFiltradas.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center text-[#b7bac3]">
+                    No hay registros en este periodo
+                  </div>
+                ) : (
+                  txFiltradas.map(t => (
+                    <div key={t.id} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm space-y-4">
+                      <div className="flex flex-wrap gap-3">
+                        <input type="date" value={t.fecha} onChange={e => actualizarTx(t.id, 'fecha', e.target.value)} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                        <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} onBlur={() => logTxChange(t.id, 'tipo')} className={`border rounded-lg px-2 py-1.5 font-medium w-full ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                          <option>Ingreso</option>
+                          <option>Egreso</option>
+                        </select>
+                        <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} onBlur={() => logTxChange(t.id, 'cat')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                          <option value="">Categoría</option>
+                          {(t.tipo === 'Ingreso' ? CAT_ING : CAT_EGR).map(c => <option key={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} onBlur={() => logTxChange(t.id, 'concepto')} placeholder="Concepto" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                      <textarea value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} onBlur={() => logTxChange(t.id, 'notas')} placeholder="Notas" rows={2} className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none resize-none" />
+                      <div className="flex flex-wrap gap-3">
+                        <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} onBlur={() => logTxChange(t.id, 'caja')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                          {CAJAS.map(c => <option key={c}>{c}</option>)}
+                        </select>
+                        <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} onBlur={() => logTxChange(t.id, 'monto')} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-3 py-2 w-full text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                      </div>
+                      <div className="flex justify-end">
+                        <button onClick={() => eliminarTx(t.id)} className="inline-flex items-center gap-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 className="w-4 h-4" />Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hidden md:block">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#f8f9fc] border-b border-gray-100">
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Fecha</th>
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Tipo</th>
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Categoría</th>
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Concepto</th>
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Notas</th>
+                        <th className="px-4 py-4 text-left font-semibold text-[#2a1d89]">Caja</th>
+                        <th className="px-4 py-4 text-right font-semibold text-[#2a1d89]">Monto</th>
+                        <th className="px-4 py-4 w-12"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {txFiltradas.length === 0 ? (
+                        <tr><td colSpan={8} className="px-4 py-16 text-center text-[#b7bac3]">No hay registros en este periodo</td></tr>
+                      ) : (
+                        txFiltradas.map(t => (
+                          <tr key={t.id} className="border-b border-gray-50 hover:bg-[#f8f9fc]/50 transition">
+                            <td className="px-4 py-3">
+                              <input type="date" value={t.fecha} onChange={e => actualizarTx(t.id, 'fecha', e.target.value)} onBlur={() => logTxChange(t.id, 'fecha')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-32 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                            </td>
+                            <td className="px-4 py-3">
+                              <select value={t.tipo} onChange={e => actualizarTx(t.id, 'tipo', e.target.value)} onBlur={() => logTxChange(t.id, 'tipo')} className={`border rounded-lg px-2 py-1.5 font-medium ${t.tipo === 'Ingreso' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                <option>Ingreso</option>
+                                <option>Egreso</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              <select value={t.cat} onChange={e => actualizarTx(t.id, 'cat', e.target.value)} onBlur={() => logTxChange(t.id, 'cat')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                                <option value="">-</option>
+                                {(t.tipo === 'Ingreso' ? CAT_ING : CAT_EGR).map(c => <option key={c}>{c}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              <input type="text" value={t.concepto} onChange={e => actualizarTx(t.id, 'concepto', e.target.value)} onBlur={() => logTxChange(t.id, 'concepto')} placeholder="Descripción" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[140px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                            </td>
+                            <td className="px-4 py-3">
+                              <input type="text" value={t.notas || ''} onChange={e => actualizarTx(t.id, 'notas', e.target.value)} onBlur={() => logTxChange(t.id, 'notas')} placeholder="Notas" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-full min-w-[160px] focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                            </td>
+                            <td className="px-4 py-3">
+                              <select value={t.caja} onChange={e => actualizarTx(t.id, 'caja', e.target.value)} onBlur={() => logTxChange(t.id, 'caja')} className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 focus:ring-2 focus:ring-[#4f67eb]/20 outline-none">
+                                {CAJAS.map(c => <option key={c}>{c}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-4 py-3">
+                              <input type="number" value={t.monto} onChange={e => actualizarTx(t.id, 'monto', e.target.value)} onBlur={() => logTxChange(t.id, 'monto')} placeholder="0.00" className="bg-transparent border border-gray-200 rounded-lg px-2 py-1.5 w-28 text-right font-medium focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                            </td>
+                            <td className="px-4 py-3">
+                              <button onClick={() => eliminarTx(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== BASE DE DATOS ===== */}
+          {tab === 'database' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap justify-between items-center gap-4">
+                <div>
+                  <p className="text-[#b7bac3] text-sm">
+                    {databaseSections.reduce((total, section) => total + section.rows.length, 0)} registros guardados
+                  </p>
+                </div>
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#b7bac3]" />
+                  <input
+                    type="text"
+                    value={dbFiltro}
+                    onChange={e => setDbFiltro(e.target.value)}
+                    placeholder="Buscar en la base de datos"
+                    className="w-full bg-white border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {databaseSections.map(section => {
+                  const rows = dbFiltro
+                    ? section.rows.filter(row => JSON.stringify(row).toLowerCase().includes(dbFiltro.toLowerCase()))
+                    : section.rows;
+
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
                   return (
                     <div
                       key={l.id}
@@ -1837,10 +2755,33 @@ return (
               </div>
             )}
 
+<<<<<<< HEAD
             {leadsFiltrados.length === 0 && (
               <div className="text-center py-16">
                 <Target className="w-16 h-16 mx-auto text-[#b7bac3] mb-4" />
                 <p className="text-[#b7bac3]">No hay leads con estos filtros</p>
+=======
+          {/* ===== CONTACTOS ===== */}
+          {tab === 'contactos' && (
+            <div className="space-y-6">
+              <div className="flex gap-2 border-b border-gray-200 pb-4">
+                {[
+                  { id: 'cli', label: `Clientes (${cli.length})`, icon: Users },
+                  { id: 'prov', label: `Proveedores (${prov.length})`, icon: Building },
+                  { id: 'emp', label: `Empleados (${emp.length})`, icon: User },
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setSubTab(t.id)}
+                    className={`px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-medium transition ${subTab === t.id
+                      ? 'bg-[#4f67eb] text-white shadow-md shadow-[#4f67eb]/20'
+                      : 'text-[#2a1d89] hover:bg-gray-100'
+                      }`}
+                  >
+                    <t.icon className="w-4 h-4" />{t.label}
+                  </button>
+                ))}
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
               </div>
             )}
           </div>
@@ -2078,6 +3019,7 @@ return (
                   ? section.rows.filter(row => JSON.stringify(row).toLowerCase().includes(dbFiltro.toLowerCase()))
                   : section.rows;
 
+<<<<<<< HEAD
                 return (
                   <div key={section.id} className="bg-white border border-gray-100 rounded-2xl p-5">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
@@ -2157,6 +3099,53 @@ return (
                     <button onClick={agregarCliente} className="px-4 py-2.5 bg-[#4f67eb] text-white rounded-xl text-sm font-medium hover:bg-[#2a1d89] transition flex items-center gap-2 shadow-md shadow-[#4f67eb]/20">
                       <Plus className="w-4 h-4" />Nuevo Cliente
                     </button>
+=======
+              {/* Balance y Estado de Resultados */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+                  <h3 className="font-bold text-[#2a1d89] mb-5 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-[#4f67eb]" />Balance General
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-[#2a1d89]">Efectivo</span>
+                        <span className={balancesAcumulados.efectivo >= 0 ? 'text-emerald-600 font-medium' : 'text-red-500 font-medium'}>{fmt(balancesAcumulados.efectivo)}</span>
+                      </div>
+                      <ProgressBar value={Math.abs(balancesAcumulados.efectivo)} max={Math.abs(balancesAcumulados.liquidez) * 1.5 || 1} color={balancesAcumulados.efectivo >= 0 ? 'success' : 'danger'} />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-[#2a1d89]">Bancos</span>
+                        <span className={balancesAcumulados.banco >= 0 ? 'text-[#4f67eb] font-medium' : 'text-red-500 font-medium'}>{fmt(balancesAcumulados.banco)}</span>
+                      </div>
+                      <ProgressBar value={Math.abs(balancesAcumulados.banco)} max={Math.abs(balancesAcumulados.liquidez) * 1.5 || 1} color="primary" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-[#2a1d89]">Por Cobrar</span>
+                        <span className="text-amber-600 font-medium">{fmt(balancesAcumulados.xCobrar)}</span>
+                      </div>
+                      <ProgressBar value={balancesAcumulados.xCobrar} max={Math.abs(balancesAcumulados.liquidez) || 1} color="warning" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-[#2a1d89]">Por Pagar</span>
+                        <span className="text-red-500 font-medium">{fmt(balancesAcumulados.xPagar)}</span>
+                      </div>
+                      <ProgressBar value={balancesAcumulados.xPagar} max={Math.abs(balancesAcumulados.liquidez) || 1} color="danger" />
+                    </div>
+                    <div className="pt-4 border-t border-gray-100 space-y-2">
+                      <div className="flex justify-between">
+                        <span className="font-medium text-[#2a1d89]">Liquidez Disponible</span>
+                        <span className={`font-bold ${balancesAcumulados.liquidez >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(balancesAcumulados.liquidez)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-medium text-[#2a1d89]">Capital de Trabajo</span>
+                        <span className={`font-bold ${metricas.capitalTrabajo >= 0 ? 'text-[#4f67eb]' : 'text-red-500'}`}>{fmt(metricas.capitalTrabajo)}</span>
+                      </div>
+                    </div>
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2329,6 +3318,7 @@ return (
               </div>
             </div>
 
+<<<<<<< HEAD
             {/* Categorías */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
@@ -2522,6 +3512,46 @@ return (
                     <select value={editData.tipo} onChange={e => cambiarCampo('tipo', e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none">
                       {TIPOS_VENUE.map(t => <option key={t}>{t}</option>)}
                     </select>
+=======
+          {/* ===== CONFIG ===== */}
+          {tab === 'config' && (
+            <div className="space-y-6 max-w-2xl">
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-[#2a1d89] flex items-center gap-2">
+                    <Building className="w-5 h-5 text-[#4f67eb]" />Empresa
+                  </h3>
+                  <button
+                    onClick={() => {
+                      saveToCloudDebounced(allData);
+                      notify('Información de empresa guardada');
+                    }}
+                    className="text-sm font-medium text-[#4f67eb] hover:underline"
+                  >
+                    Guardar
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[#b7bac3] text-sm block mb-1.5">Nombre</label>
+                  <input type="text" value={cfg.empresa} onChange={e => setCfg({ ...cfg, empresa: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+                </div>
+                <div>
+                  <label className="text-[#b7bac3] text-sm block mb-1.5">RFC</label>
+                  <input type="text" value={cfg.rfc} onChange={e => setCfg({ ...cfg, rfc: e.target.value.toUpperCase() })} maxLength={13} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+                </div>
+                <div>
+                  <label className="text-[#b7bac3] text-sm block mb-1.5">Dirección</label>
+                  <input type="text" value={cfg.dir} onChange={e => setCfg({ ...cfg, dir: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[#b7bac3] text-sm block mb-1.5">Teléfono</label>
+                    <input type="text" value={cfg.tel} onChange={e => setCfg({ ...cfg, tel: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[#b7bac3] text-sm block mb-1.5">Email</label>
+                    <input type="email" value={cfg.email} onChange={e => setCfg({ ...cfg, email: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -2845,6 +3875,7 @@ return (
                   <textarea value={editData.notas || ''} onChange={e => cambiarCampo('notas', e.target.value)} rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none resize-none" />
                 </div>
 
+<<<<<<< HEAD
                 <div className="flex gap-3 pt-4 border-t border-gray-100">
                   <button onClick={imprimirFactura} className="flex-1 bg-[#4f67eb]/10 text-[#4f67eb] px-4 py-2.5 rounded-xl font-medium hover:bg-[#4f67eb]/20 transition flex items-center justify-center gap-2"><Printer className="w-4 h-4" />Imprimir</button>
                   <button onClick={guardarYCerrar} className="flex-1 bg-[#4f67eb] hover:bg-[#2a1d89] text-white px-4 py-2.5 rounded-xl font-medium transition">Guardar</button>
@@ -2860,6 +3891,84 @@ return (
                 </div>
               </>
             )}
+=======
+              {/* Modal Factura */}
+              {modalType === 'fact' && (
+                <>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-[#b7bac3] text-sm block mb-1.5">Fecha</label>
+                      <input type="date" value={editData.fecha} onChange={e => cambiarCampo('fecha', e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[#b7bac3] text-sm block mb-1.5">Vencimiento</label>
+                      <input type="date" value={editData.vence || ''} onChange={e => cambiarCampo('vence', e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[#b7bac3] text-sm block mb-1.5">Estado</label>
+                      <select value={editData.estado} onChange={e => cambiarCampo('estado', e.target.value)} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none">
+                        {EST_FACT.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[#b7bac3] text-sm block mb-1.5">Cliente</label>
+                    <select value={editData.clienteId || ''} onChange={e => {
+                      const c = cli.find(x => x.id === Number(e.target.value));
+                      cambiarCampo('clienteId', e.target.value);
+                      cambiarCampo('clienteNom', c?.nombre || '');
+                    }} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none">
+                      <option value="">Seleccionar...</option>
+                      {cli.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-[#b7bac3] text-sm">Conceptos</label>
+                      <button onClick={agregarItemFactura} className="text-[#4f67eb] text-sm font-medium flex items-center gap-1 hover:underline"><Plus className="w-3 h-3" />Agregar</button>
+                    </div>
+                    {editData.items.map((item, idx) => (
+                      <div key={idx} className="flex gap-2 items-center mb-2">
+                        <input type="text" value={item.d} onChange={e => actualizarItemFactura(idx, 'd', e.target.value)} placeholder="Descripción" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                        <input type="number" value={item.c} onChange={e => actualizarItemFactura(idx, 'c', e.target.value)} className="w-14 border border-gray-200 rounded-lg px-2 py-2 text-sm text-center focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" min="1" />
+                        <input type="number" value={item.p} onChange={e => actualizarItemFactura(idx, 'p', e.target.value)} className="w-24 border border-gray-200 rounded-lg px-2 py-2 text-sm text-right focus:ring-2 focus:ring-[#4f67eb]/20 outline-none" />
+                        <span className="w-24 text-right text-[#4f67eb] text-sm font-medium">{fmt(item.c * item.p)}</span>
+                        {editData.items.length > 1 && (
+                          <button onClick={() => eliminarItemFactura(idx)} className="text-red-400 p-1 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-[#f8f9fc] rounded-xl p-4 text-sm">
+                    <div className="flex justify-between mb-2"><span className="text-[#b7bac3]">Subtotal</span><span className="text-[#2a1d89]">{fmt(editData.sub)}</span></div>
+                    <div className="flex justify-between mb-2"><span className="text-[#b7bac3]">IVA (16%)</span><span className="text-[#2a1d89]">{fmt(editData.iva)}</span></div>
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-200"><span className="text-[#2a1d89]">Total</span><span className="text-[#4f67eb]">{fmt(editData.total)}</span></div>
+                  </div>
+
+                  <div>
+                    <label className="text-[#b7bac3] text-sm block mb-1.5">Notas</label>
+                    <textarea value={editData.notas || ''} onChange={e => cambiarCampo('notas', e.target.value)} rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#4f67eb]/20 focus:border-[#4f67eb] outline-none resize-none" />
+                  </div>
+
+                  <div className="flex gap-3 pt-4 border-t border-gray-100">
+                    <button onClick={imprimirFactura} className="flex-1 bg-[#4f67eb]/10 text-[#4f67eb] px-4 py-2.5 rounded-xl font-medium hover:bg-[#4f67eb]/20 transition flex items-center justify-center gap-2"><Printer className="w-4 h-4" />Imprimir</button>
+                    <button onClick={guardarYCerrar} className="flex-1 bg-[#4f67eb] hover:bg-[#2a1d89] text-white px-4 py-2.5 rounded-xl font-medium transition">Guardar</button>
+                    {!confirmDelete ? (
+                      <button onClick={() => setConfirmDelete(true)} className="bg-red-50 text-red-500 px-4 py-2.5 rounded-xl hover:bg-red-100 transition">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button onClick={ejecutarEliminacion} className="bg-red-500 text-white px-4 py-2.5 rounded-xl text-sm hover:bg-red-600 transition">
+                        ¿Confirmar?
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+>>>>>>> 480946a521e684fed536578da0029da04b295d0b
           </div>
         </div>
       </div>

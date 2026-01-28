@@ -11,21 +11,25 @@ export const useUsers = ({ enabled = true } = {}) => {
       setUsers([]);
       setLoading(false);
       setError(null);
-      return () => {};
+      return () => { };
     }
 
-    let unsubscribe = () => {};
+    let unsubscribe = () => { };
     let isMounted = true;
 
     const load = async () => {
       setLoading(true);
       const response = await loadUsersFromCloud();
+
       if (!isMounted) return;
+
       if (response.success) {
         setUsers(response.data || []);
         setError(null);
-      } else if (response.reason !== 'not-configured') {
-        setError(response.error || 'No se pudieron cargar usuarios');
+      } else {
+        if (response.reason !== 'not-configured') {
+          setError(response.error || 'No se pudieron cargar usuarios');
+        }
       }
       setLoading(false);
     };
